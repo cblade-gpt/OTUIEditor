@@ -500,13 +500,18 @@ window.initOTUIBuilder = function() {
         
         let addedCount = 0;
         styleNames.forEach(styleName => {
-            // Check if this style corresponds to a widget type
-            const widgetType = styleToWidgetMap[styleName] || (styleName.startsWith('UI') ? styleName : `UI${styleName}`);
+            if (!styleName || typeof styleName !== 'string') return;
             
-            // Only add if not already in OTUI_WIDGETS
-            if (!OTUI_WIDGETS[widgetType] && styleName) {
-                // Try to infer category and properties from style
-                const style = styles[styleName];
+            // Check if this style corresponds to a widget type - safe lookup
+            const widgetType = (styleToWidgetMap && styleToWidgetMap[styleName]) 
+                ? styleToWidgetMap[styleName] 
+                : (styleName.startsWith('UI') ? styleName : `UI${styleName}`);
+            
+            // Only add if not already in OTUI_WIDGETS and widgetType is valid
+            if (!OTUI_WIDGETS[widgetType] && widgetType && styleName) {
+                // Try to infer category and properties from style - safe lookup
+                const style = styles && styles[styleName] ? styles[styleName] : null;
+                if (!style) return;
                 const isContainer = styleName.includes('Panel') || styleName.includes('Window') || 
                                    styleName.includes('Area') || styleName.includes('Layout') ||
                                    styleName.includes('TabBar') || styleName.includes('MainWindow');

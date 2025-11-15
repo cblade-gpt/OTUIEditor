@@ -5,38 +5,100 @@ let styleCache = {};
 let imageCache = {}; // Maps image paths to blob URLs: { "images/ui/button.png": "blob:http://..." }
 let imageFiles = {}; // Maps image paths to File objects: { "images/ui/button.png": File }
 
-// Widget type mapping from OTUI to builder
+// Widget type mapping from OTUI to builder (bidirectional mapping)
 const WIDGET_TYPE_MAP = {
+    // Layout Widgets
     'UIWindow': 'UIWindow',
     'Window': 'UIWindow',
-    'UILabel': 'UILabel',
-    'Label': 'UILabel',
+    'CleanStaticMainWindow': 'CleanStaticMainWindow',
     'UIPanel': 'UIPanel',
     'Panel': 'UIPanel',
     'UIWidget': 'UIPanel',
+    'Widget': 'UIPanel',
     'UIScrollArea': 'UIScrollArea',
     'ScrollablePanel': 'UIScrollArea',
-    'UIScrollBar': 'UIScrollBar',
-    'VerticalScrollBar': 'UIScrollBar',
-    'HorizontalScrollBar': 'UIScrollBar',
-    'UIMiniWindow': 'UIMiniWindow',
-    'MiniWindow': 'UIMiniWindow',
+    'ScrollArea': 'UIScrollArea',
+    'UITabBar': 'UITabBar',
+    'TabBar': 'UITabBar',
+    'UITab': 'UITab',
+    'Tab': 'UITab',
+    'UIVerticalLayout': 'UIVerticalLayout',
+    'VerticalLayout': 'UIVerticalLayout',
+    'UIHorizontalLayout': 'UIHorizontalLayout',
+    'HorizontalLayout': 'UIHorizontalLayout',
+    'UIGridLayout': 'UIGridLayout',
+    'GridLayout': 'UIGridLayout',
+    'UIHorizontalSeparator': 'UIHorizontalSeparator',
+    'HorizontalSeparator': 'UIHorizontalSeparator',
+    'UIVerticalSeparator': 'UIVerticalSeparator',
+    'VerticalSeparator': 'UIVerticalSeparator',
+    'UISeparator': 'UISeparator',
+    'Separator': 'UISeparator',
+    
+    // Controls
     'UIButton': 'UIButton',
     'Button': 'UIButton',
-    'UITextEdit': 'UITextEdit',
-    'TextEdit': 'UITextEdit',
     'UICheckBox': 'UICheckBox',
     'CheckBox': 'UICheckBox',
     'UIRadioButton': 'UIRadioButton',
     'RadioButton': 'UIRadioButton',
+    'UITextEdit': 'UITextEdit',
+    'TextEdit': 'UITextEdit',
     'UIProgressBar': 'UIProgressBar',
     'ProgressBar': 'UIProgressBar',
-    'UIItem': 'UIItem',
-    'Item': 'UIItem',
+    'UISlider': 'UISlider',
+    'Slider': 'UISlider',
+    'UIComboBox': 'UIComboBox',
+    'ComboBox': 'UIComboBox',
+    'UIList': 'UIList',
+    'List': 'UIList',
+    'UITextList': 'UITextList',
+    'TextList': 'UITextList',
+    'UIScrollBar': 'UIScrollBar',
+    'VerticalScrollBar': 'UIScrollBar',
+    'HorizontalScrollBar': 'UIScrollBar',
+    'ScrollBar': 'UIScrollBar',
+    'UISpinBox': 'UISpinBox',
+    'SpinBox': 'UISpinBox',
+    
+    // Display
+    'UILabel': 'UILabel',
+    'Label': 'UILabel',
+    'GameLabel': 'UILabel',
     'UIImage': 'UIImage',
     'Image': 'UIImage',
     'UISprite': 'UISprite',
-    'Sprite': 'UISprite'
+    'Sprite': 'UISprite',
+    'UIMap': 'UIMap',
+    'Map': 'UIMap',
+    'UIMinimap': 'UIMinimap',
+    'Minimap': 'UIMinimap',
+    'UICreature': 'UICreature',
+    'Creature': 'UICreature',
+    
+    // Game UI
+    'UIItem': 'UIItem',
+    'Item': 'UIItem',
+    'UIHealthBar': 'UIHealthBar',
+    'HealthBar': 'UIHealthBar',
+    'UIManaBar': 'UIManaBar',
+    'ManaBar': 'UIManaBar',
+    'UIExperienceBar': 'UIExperienceBar',
+    'ExperienceBar': 'UIExperienceBar',
+    'UIOutfit': 'UIOutfit',
+    'Outfit': 'UIOutfit',
+    'UICreatureBox': 'UICreatureBox',
+    'CreatureBox': 'UICreatureBox',
+    'UISkillBar': 'UISkillBar',
+    'SkillBar': 'UISkillBar',
+    'UIInventory': 'UIInventory',
+    'Inventory': 'UIInventory',
+    'UIContainer': 'UIContainer',
+    'Container': 'UIContainer',
+    
+    // MiniWindow
+    'UIMiniWindow': 'UIMiniWindow',
+    'MiniWindow': 'UIMiniWindow'
 };
 
 // Set client data path
@@ -496,37 +558,64 @@ function getStyleForWidget(widgetType) {
     
     // Map widget types to OTUI style names
     const styleNameMap = {
+        // Layout Widgets
         'UIWindow': 'Window',
-        'UILabel': 'Label',
+        'CleanStaticMainWindow': 'CleanStaticMainWindow',
         'UIPanel': 'Panel',
         'UIWidget': 'Panel',
         'UIScrollArea': 'ScrollablePanel',
-        'UIScrollBar': 'VerticalScrollBar',
-        'UIMiniWindow': 'MiniWindow',
-        'UIButton': 'Button',
-        'UITextEdit': 'TextEdit',
-        'UICheckBox': 'CheckBox',
-        'UIRadioButton': 'RadioButton',
-        'UIProgressBar': 'ProgressBar',
-        'UIItem': 'Item',
-        'UIImage': 'Image',
-        'UISprite': 'Sprite',
-        'UIComboBox': 'ComboBox',
+        'UITabBar': 'TabBar',
+        'UITab': 'Tab',
+        'UIVerticalLayout': 'VerticalLayout',
+        'UIHorizontalLayout': 'HorizontalLayout',
+        'UIGridLayout': 'GridLayout',
         'UIHorizontalSeparator': 'HorizontalSeparator',
         'UIVerticalSeparator': 'VerticalSeparator',
         'UISeparator': 'Separator',
-        'UIHorizontalLayout': 'HorizontalLayout',
-        'UIVerticalLayout': 'VerticalLayout',
-        'UITabBar': 'TabBar',
-        'UIGridLayout': 'GridLayout',
-        'CleanStaticMainWindow': 'CleanStaticMainWindow'
+        
+        // Controls
+        'UIButton': 'Button',
+        'UICheckBox': 'CheckBox',
+        'UIRadioButton': 'RadioButton',
+        'UITextEdit': 'TextEdit',
+        'UIProgressBar': 'ProgressBar',
+        'UISlider': 'Slider',
+        'UIComboBox': 'ComboBox',
+        'UIList': 'List',
+        'UITextList': 'TextList',
+        'UIScrollBar': 'VerticalScrollBar',
+        'UISpinBox': 'SpinBox',
+        
+        // Display
+        'UILabel': 'Label',
+        'UIImage': 'Image',
+        'UISprite': 'Sprite',
+        'UIMap': 'Map',
+        'UIMinimap': 'Minimap',
+        'UICreature': 'Creature',
+        
+        // Game UI
+        'UIItem': 'Item',
+        'UIHealthBar': 'HealthBar',
+        'UIManaBar': 'ManaBar',
+        'UIExperienceBar': 'ExperienceBar',
+        'UIOutfit': 'Outfit',
+        'UICreatureBox': 'CreatureBox',
+        'UISkillBar': 'SkillBar',
+        'UIInventory': 'Inventory',
+        'UIContainer': 'Container',
+        
+        // MiniWindow
+        'UIMiniWindow': 'MiniWindow'
     };
     
-    // Get the style name for this widget type
-    const styleName = styleNameMap[widgetType] || widgetType.replace('UI', '');
+    // Get the style name for this widget type (safe lookup)
+    const styleName = (styleNameMap && styleNameMap[widgetType]) ? styleNameMap[widgetType] : (widgetType ? widgetType.replace('UI', '') : '');
     
-    // Try to find the style directly
-    let style = loadedStyles[styleName];
+    if (!styleName) return null;
+    
+    // Try to find the style directly (safe lookup)
+    let style = loadedStyles && loadedStyles[styleName] ? loadedStyles[styleName] : null;
     if (style) {
         // Make sure it's resolved
         if (!style.resolved) {
@@ -538,9 +627,9 @@ function getStyleForWidget(widgetType) {
         }
     }
     
-    // Try parent styles
-    if (style && style.parent) {
-        const parentStyle = loadedStyles[style.parent];
+    // Try parent styles - safe access
+    if (style && style.parent && loadedStyles) {
+        const parentStyle = loadedStyles[style.parent] || null;
         if (parentStyle) {
             if (!parentStyle.resolved) {
                 resolveInheritance();
@@ -554,17 +643,50 @@ function getStyleForWidget(widgetType) {
     // Try common fallbacks
     const fallbacks = {
         'UIWindow': ['Window'],
+        'CleanStaticMainWindow': ['CleanStaticMainWindow'],
+        'UIPanel': ['Panel', 'FlatPanel', 'Widget'],
+        'UIWidget': ['Panel', 'Widget'],
+        'UIScrollArea': ['ScrollablePanel', 'ScrollArea', 'Panel'],
+        'UITabBar': ['TabBar'],
+        'UITab': ['Tab'],
+        'UIVerticalLayout': ['VerticalLayout'],
+        'UIHorizontalLayout': ['HorizontalLayout'],
+        'UIGridLayout': ['GridLayout'],
+        'UIHorizontalSeparator': ['HorizontalSeparator', 'Separator'],
+        'UIVerticalSeparator': ['VerticalSeparator', 'Separator'],
+        'UISeparator': ['Separator'],
+        'UIButton': ['Button'],
+        'UICheckBox': ['CheckBox'],
+        'UIRadioButton': ['RadioButton'],
+        'UITextEdit': ['TextEdit'],
+        'UIProgressBar': ['ProgressBar'],
+        'UISlider': ['Slider'],
+        'UIComboBox': ['ComboBox'],
+        'UIList': ['List'],
+        'UITextList': ['TextList'],
+        'UIScrollBar': ['VerticalScrollBar', 'HorizontalScrollBar', 'ScrollBar'],
+        'UISpinBox': ['SpinBox'],
         'UILabel': ['Label', 'GameLabel'],
-        'UIPanel': ['Panel', 'FlatPanel'],
-        'UIScrollArea': ['ScrollablePanel', 'Panel'],
-        'UIScrollBar': ['VerticalScrollBar', 'HorizontalScrollBar'],
-        'UIMiniWindow': ['MiniWindow'],
-        'UIButton': ['Button']
+        'UIImage': ['Image'],
+        'UISprite': ['Sprite'],
+        'UIMap': ['Map'],
+        'UIMinimap': ['Minimap'],
+        'UICreature': ['Creature'],
+        'UIItem': ['Item'],
+        'UIHealthBar': ['HealthBar'],
+        'UIManaBar': ['ManaBar'],
+        'UIExperienceBar': ['ExperienceBar'],
+        'UIOutfit': ['Outfit'],
+        'UICreatureBox': ['CreatureBox'],
+        'UISkillBar': ['SkillBar'],
+        'UIInventory': ['Inventory'],
+        'UIContainer': ['Container'],
+        'UIMiniWindow': ['MiniWindow']
     };
     
-    if (fallbacks[widgetType]) {
+    if (fallbacks && fallbacks[widgetType] && Array.isArray(fallbacks[widgetType])) {
         for (const fallbackName of fallbacks[widgetType]) {
-            const fallbackStyle = loadedStyles[fallbackName];
+            const fallbackStyle = loadedStyles && loadedStyles[fallbackName] ? loadedStyles[fallbackName] : null;
             if (fallbackStyle) {
                 if (!fallbackStyle.resolved) {
                     resolveInheritance();
@@ -691,15 +813,15 @@ function applyOTUIStyleToWidget(widget, widgetType) {
         return false;
     }
     
-    // Get the actual style object (not just resolved properties)
-    const styleName = widgetType.replace('UI', '');
-    const fullStyle = loadedStyles[styleName];
+    // Get the actual style object (not just resolved properties) - safe lookup
+    const styleName = widgetType ? widgetType.replace('UI', '') : '';
+    const fullStyle = (loadedStyles && styleName) ? loadedStyles[styleName] : null;
     
     // Merge base style with state-specific style (e.g., $checked, $unchecked)
-    let style = { ...styleObj };
+    let style = styleObj ? { ...styleObj } : {};
     
-    // Check for widget state (for checkboxes: checked/unchecked)
-    if (fullStyle && fullStyle.states) {
+    // Check for widget state (for checkboxes: checked/unchecked) - safe access
+    if (fullStyle && fullStyle.states && typeof fullStyle.states === 'object') {
         // Check if widget has checked state (for checkboxes)
         const isChecked = widget.dataset.checked === 'true' || widget.classList.contains('checked');
         
@@ -754,23 +876,23 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     let imageClip = null;
     let imageRect = null;
     
-    // Check state-specific image-clip/image-rect FIRST (before merging)
-    if (fullStyle && fullStyle.states) {
+    // Check state-specific image-clip/image-rect FIRST (before merging) - safe access
+    if (fullStyle && fullStyle.states && typeof fullStyle.states === 'object') {
         const isChecked = widget.dataset.checked === 'true' || widget.classList.contains('checked');
-        // Check resolved state first (already merged with base)
-        if (isChecked && fullStyle.states.checked) {
+        // Check resolved state first (already merged with base) - safe access
+        if (isChecked && fullStyle.states.checked && typeof fullStyle.states.checked === 'object') {
             imageClip = fullStyle.states.checked['image-clip'] || imageClip;
             imageRect = fullStyle.states.checked['image-rect'] || imageRect;
-        } else if (!isChecked && fullStyle.states.unchecked) {
+        } else if (!isChecked && fullStyle.states.unchecked && typeof fullStyle.states.unchecked === 'object') {
             imageClip = fullStyle.states.unchecked['image-clip'] || imageClip;
             imageRect = fullStyle.states.unchecked['image-rect'] || imageRect;
         }
-        // Also check original state properties if still not found (before resolution)
-        if ((!imageClip && !imageRect) && fullStyle.originalStates) {
-            if (isChecked && fullStyle.originalStates.checked) {
+        // Also check original state properties if still not found (before resolution) - safe access
+        if ((!imageClip && !imageRect) && fullStyle.originalStates && typeof fullStyle.originalStates === 'object') {
+            if (isChecked && fullStyle.originalStates.checked && typeof fullStyle.originalStates.checked === 'object') {
                 imageClip = fullStyle.originalStates.checked['image-clip'] || imageClip;
                 imageRect = fullStyle.originalStates.checked['image-rect'] || imageRect;
-            } else if (!isChecked && fullStyle.originalStates.unchecked) {
+            } else if (!isChecked && fullStyle.originalStates.unchecked && typeof fullStyle.originalStates.unchecked === 'object') {
                 imageClip = fullStyle.originalStates.unchecked['image-clip'] || imageClip;
                 imageRect = fullStyle.originalStates.unchecked['image-rect'] || imageRect;
             }
@@ -1082,6 +1204,9 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     
     // Handle text alignment (check dataset first for custom values)
     const textAlign = widget.dataset['text-align'] || style['text-align'];
+    const isWindow = widgetType === 'UIWindow' || widgetType === 'CleanStaticMainWindow';
+    const hasTitle = widget.dataset.title && widget.dataset.title.trim() !== '';
+    
     if (textAlign) {
         widget.style.textAlign = textAlign;
         const contentEl = widget.querySelector('.widget-content');
@@ -1095,6 +1220,17 @@ function applyOTUIStyleToWidget(widget, widgetType) {
                 contentEl.style.justifyContent = 'center';
             }
             contentEl.style.textAlign = textAlign;
+        }
+    }
+    
+    // Special handling for windows with titles: position title at top center
+    if (isWindow && hasTitle) {
+        const contentEl = widget.querySelector('.widget-content');
+        if (contentEl) {
+            contentEl.style.alignItems = 'flex-start';
+            contentEl.style.justifyContent = 'center';
+            contentEl.style.paddingTop = '8px';
+            contentEl.style.textAlign = 'center';
         }
     }
     

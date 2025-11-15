@@ -251,6 +251,8 @@ function createWidget(type) {
     });
 
     // Determine display content based on widget type
+    // Only show text if explicitly set by user (text, title, placeholder)
+    // Don't show default labels like "FlashWindow", "Image", etc.
     let displayContent = '';
     if (widget.dataset.text) {
         displayContent = widget.dataset.text;
@@ -258,19 +260,8 @@ function createWidget(type) {
         displayContent = widget.dataset.title;
     } else if (widget.dataset.placeholder) {
         displayContent = widget.dataset.placeholder;
-    } else if (widget.dataset.itemId) {
-        displayContent = `Item ${widget.dataset.itemId}`;
-    } else if (widget.dataset.percent !== undefined) {
-        displayContent = `${widget.dataset.percent}%`;
-    } else if (widget.dataset.value !== undefined) {
-        displayContent = `Value: ${widget.dataset.value}`;
-    } else if (widget.dataset.source) {
-        displayContent = 'Image';
-    } else if (widget.dataset.spriteId) {
-        displayContent = `Sprite ${widget.dataset.spriteId}`;
-    } else {
-        displayContent = type.replace('UI', '');
     }
+    // Removed default labels: Item, percent, value, Image, Sprite, widget type name
 
     widget.innerHTML = `
         <div class="widget-content">${displayContent}</div>
@@ -288,6 +279,18 @@ function createWidget(type) {
         h.onmousedown = e => { e.stopPropagation(); startResize(widget, h.className.split(' ')[1], e); };
     });
 
+    // Special handling for windows with titles: position title at top center
+    const isWindow = type === 'UIWindow' || type === 'CleanStaticMainWindow';
+    if (isWindow && widget.dataset.title) {
+        const contentEl = widget.querySelector('.widget-content');
+        if (contentEl) {
+            contentEl.style.alignItems = 'flex-start';
+            contentEl.style.justifyContent = 'center';
+            contentEl.style.paddingTop = '8px';
+            contentEl.style.textAlign = 'center';
+        }
+    }
+    
     // Apply OTUI styles immediately after widget is fully created
     // This ensures ALL widgets (buttons, labels, panels, windows, etc.) use the correct images and styling from OTUI files
     // This makes the editor visually match the actual client appearance
@@ -302,6 +305,15 @@ function createWidget(type) {
                 const contentEl = widget.querySelector('.widget-content');
                 if (contentEl && widget.dataset.text) {
                     contentEl.textContent = widget.dataset.text;
+                }
+                // Re-apply window title positioning after styles (in case styles override it)
+                if (isWindow && widget.dataset.title) {
+                    if (contentEl) {
+                        contentEl.style.alignItems = 'flex-start';
+                        contentEl.style.justifyContent = 'center';
+                        contentEl.style.paddingTop = '8px';
+                        contentEl.style.textAlign = 'center';
+                    }
                 }
                 // Force a reflow to ensure styles are applied, especially for clipped widgets
                 // This ensures separators, checkboxes, comboboxes get their correct size immediately
