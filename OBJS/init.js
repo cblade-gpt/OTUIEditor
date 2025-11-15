@@ -302,6 +302,280 @@ window.initOTUIBuilder = function() {
         const modal = document.getElementById('moduleCreatorModal');
         if (modal) modal.style.display = 'flex';
     });
+    
+    // AI Generator Integration
+    const aiGenerator = window.OTUIAIGenerator;
+    
+    // Open AI Generate modal (works even if AI generator isn't loaded)
+    const openAIModal = () => {
+        console.log('Opening AI Generate modal...');
+        const modal = document.getElementById('aiGenerateModal');
+        if (modal) {
+            console.log('Modal found, displaying...');
+            modal.style.display = 'flex';
+            const descriptionInput = document.getElementById('aiDescriptionInput');
+            if (descriptionInput) descriptionInput.focus();
+        } else {
+            console.error('AI Generate modal not found');
+            showToast('AI Generate modal not found. Please refresh the page.');
+        }
+    };
+    
+    // Bind AI Generate buttons (always bind, even if generator not loaded)
+    console.log('Binding AI Generate buttons...');
+    const aiBtn1 = document.getElementById('aiGenerateBtn');
+    const aiBtn2 = document.getElementById('aiGenerateBtnSidebar');
+    console.log('aiGenerateBtn found:', !!aiBtn1);
+    console.log('aiGenerateBtnSidebar found:', !!aiBtn2);
+    
+    // Use bind function
+    bind('aiGenerateBtn', () => {
+        console.log('AI Generate button clicked (header)');
+        openAIModal();
+    });
+    bind('aiGenerateBtnSidebar', () => {
+        console.log('AI Generate button clicked (sidebar)');
+        openAIModal();
+    });
+    
+    // Also add direct event listeners as fallback
+    if (aiBtn1) {
+        aiBtn1.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('AI Generate button clicked (header - direct listener)');
+            openAIModal();
+        });
+    }
+    if (aiBtn2) {
+        aiBtn2.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('AI Generate button clicked (sidebar - direct listener)');
+            openAIModal();
+        });
+    }
+    
+    if (aiGenerator) {
+        aiGenerator.loadConfig();
+        
+        // Load AI settings into UI
+        const aiProviderSelect = document.getElementById('aiProviderSelect');
+        const aiApiKeyInput = document.getElementById('aiApiKeyInput');
+        const aiModelInput = document.getElementById('aiModelInput');
+        const aiEndpointInput = document.getElementById('aiEndpointInput');
+        const aiEndpointGroup = document.getElementById('aiEndpointGroup');
+        
+        if (aiProviderSelect) {
+            aiProviderSelect.value = aiGenerator.apiProvider;
+            aiProviderSelect.addEventListener('change', (e) => {
+                const provider = e.target.value;
+                if (provider === 'ollama' || provider === 'local') {
+                    if (aiEndpointGroup) aiEndpointGroup.style.display = 'block';
+                } else {
+                    if (aiEndpointGroup) aiEndpointGroup.style.display = 'none';
+                }
+                
+                // Update model suggestions based on provider
+                const modelInput = document.getElementById('aiModelInput');
+                if (modelInput) {
+                    const suggestions = {
+                        'groq': 'llama-3.1-8b-instant',
+                        'gemini': 'gemini-pro',
+                        'huggingface': 'mistralai/Mistral-7B-Instruct-v0.2',
+                        'openrouter': 'google/gemini-flash-1.5',
+                        'openai': 'gpt-4o-mini',
+                        'anthropic': 'claude-3-haiku-20240307',
+                        'ollama': 'llama2'
+                    };
+                    if (suggestions[provider] && !modelInput.value) {
+                        modelInput.placeholder = `Suggested: ${suggestions[provider]}`;
+                    }
+                }
+            });
+            // Trigger initial state
+            if (aiGenerator.apiProvider === 'ollama' || aiGenerator.apiProvider === 'local') {
+                if (aiEndpointGroup) aiEndpointGroup.style.display = 'block';
+            }
+        }
+        
+        if (aiApiKeyInput) aiApiKeyInput.value = aiGenerator.apiKey;
+        if (aiModelInput) aiModelInput.value = aiGenerator.model;
+        if (aiEndpointInput) aiEndpointInput.value = aiGenerator.apiEndpoint;
+        
+        // Save AI settings
+        bind('saveAISettingsBtn', () => {
+            if (aiProviderSelect) aiGenerator.apiProvider = aiProviderSelect.value;
+            if (aiApiKeyInput) aiGenerator.apiKey = aiApiKeyInput.value;
+            if (aiModelInput) aiGenerator.model = aiModelInput.value;
+            if (aiEndpointInput) aiGenerator.apiEndpoint = aiEndpointInput.value;
+            aiGenerator.saveConfig();
+            showToast('AI settings saved!');
+        });
+        
+        // AI Generate button in modal
+        bind('aiGenerateBtnModal', async () => {
+            const descriptionInput = document.getElementById('aiDescriptionInput');
+            const progressDiv = document.getElementById('aiProgress');
+            const codeDiv = document.getElementById('aiGeneratedCode');
+            const codePreview = document.getElementById('aiCodePreview');
+            
+            if (!descriptionInput) return;
+            
+            const description = descriptionInput.value.trim();
+            if (!description) {
+                showToast('Please enter a description');
+                return;
+            }
+            
+            // Show progress
+            if (progressDiv) {
+                progressDiv.style.display = 'block';
+                progressDiv.textContent = 'Initializing...';
+            }
+            if (codeDiv) codeDiv.style.display = 'none';
+            
+            try {
+                const generatedCode = await aiGenerator.generateCode(description, (status) => {
+                    if (progressDiv) progressDiv.textContent = status;
+                });
+                
+                if (generatedCode) {
+                    if (codePreview) codePreview.textContent = generatedCode;
+                    if (codeDiv) codeDiv.style.display = 'block';
+                    if (progressDiv) progressDiv.style.display = 'none';
+                    window._lastGeneratedCode = generatedCode; // Store for apply
+                } else {
+                    throw new Error('No code generated');
+                }
+            } catch (error) {
+                console.error('AI generation error:', error);
+                if (progressDiv) {
+                    progressDiv.style.display = 'block';
+                    progressDiv.textContent = `Error: ${error.message}`;
+                    progressDiv.style.background = '#ef4444';
+                    progressDiv.style.color = 'white';
+                }
+                showToast(`AI Generation failed: ${error.message}`);
+            }
+        });
+        
+        // Apply generated code to canvas
+        bind('aiApplyCodeBtn', () => {
+            const code = window._lastGeneratedCode;
+            if (!code) {
+                showToast('No code to apply');
+                return;
+            }
+            
+            // Parse and create widgets from OTUI code
+            try {
+                // Clear canvas first
+                const content = document.getElementById('editorContent');
+                if (!content) {
+                    showToast('Editor content not found');
+                    return;
+                }
+                
+                if (!confirm('This will clear the canvas and apply the generated code. Continue?')) {
+                    return;
+                }
+                
+                content.innerHTML = '';
+                selectWidget(null);
+                
+                // Parse OTUI code
+                if (!window.parseOTUICode || !window.createWidgetsFromOTUI) {
+                    console.error('OTUI parser not loaded');
+                    showToast('OTUI parser not loaded. Please refresh the page.');
+                    return;
+                }
+                
+                console.log('Parsing OTUI code...');
+                const parsedWidgets = window.parseOTUICode(code);
+                console.log('Parsed widgets:', parsedWidgets);
+                
+                if (parsedWidgets.length === 0) {
+                    showToast('No widgets found in code. Check the code format.');
+                    return;
+                }
+                
+                // Create widgets on canvas
+                console.log('Creating widgets on canvas...');
+                const createdWidgets = window.createWidgetsFromOTUI(parsedWidgets, content, 50, 50);
+                console.log('Created widgets:', createdWidgets.length);
+                
+                if (createdWidgets.length > 0) {
+                    // Select first widget
+                    selectWidget(createdWidgets[0]);
+                    
+                    // Save state
+                    saveState();
+                    updateAll();
+                    
+                    // Close AI modal
+                    const aiModal = document.getElementById('aiGenerateModal');
+                    if (aiModal) aiModal.style.display = 'none';
+                    
+                    showToast(`Successfully created ${createdWidgets.length} widget(s) on canvas!`);
+                } else {
+                    showToast('Failed to create widgets. Check console for errors.');
+                }
+            } catch (error) {
+                console.error('Error applying code:', error);
+                showToast('Error applying code: ' + error.message);
+            }
+        });
+        
+        // Copy generated code
+        bind('aiCopyCodeBtn', () => {
+            const code = window._lastGeneratedCode;
+            if (!code) {
+                showToast('No code to copy');
+                return;
+            }
+            
+            navigator.clipboard.writeText(code).then(() => {
+                showToast('Code copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                showToast('Failed to copy code');
+            });
+        });
+        
+        // Regenerate
+        bind('aiRegenerateBtn', () => {
+            const generateBtn = document.getElementById('aiGenerateBtnModal');
+            if (generateBtn) generateBtn.click();
+        });
+        
+        // Cancel
+        bind('aiCancelBtn', () => {
+            const modal = document.getElementById('aiGenerateModal');
+            if (modal) modal.style.display = 'none';
+            const descriptionInput = document.getElementById('aiDescriptionInput');
+            if (descriptionInput) descriptionInput.value = '';
+            const codeDiv = document.getElementById('aiGeneratedCode');
+            if (codeDiv) codeDiv.style.display = 'none';
+            const progressDiv = document.getElementById('aiProgress');
+            if (progressDiv) {
+                progressDiv.style.display = 'none';
+                progressDiv.style.background = '';
+                progressDiv.style.color = '';
+            }
+        });
+    } else {
+        // AI Generator not loaded - show error when trying to generate
+        bind('aiGenerateBtnModal', () => {
+            showToast('AI Generator not loaded. Please refresh the page.');
+            console.error('OTUIAIGenerator not found. Make sure OBJS/ai-generator.js is loaded.');
+        });
+        
+        bind('aiCancelBtn', () => {
+            const modal = document.getElementById('aiGenerateModal');
+            if (modal) modal.style.display = 'none';
+        });
+    }
     bind('exportAllBtn', () => {
         const zip = new JSZip();
         const name = document.getElementById('moduleName')?.value || 'main';
@@ -621,6 +895,72 @@ window.initOTUIBuilder = function() {
         };
     }
     
+    // Import OTUI file handler
+    const importOTUIFileInput = document.getElementById('importOTUIFileInput');
+    if (importOTUIFileInput) {
+        importOTUIFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file || !file.name.endsWith('.otui')) {
+                showToast('Please select a valid .otui file');
+                return;
+            }
+            
+            try {
+                showToast('Loading OTUI file...');
+                const text = await file.text();
+                
+                // Parse and create widgets
+                if (!window.parseOTUICode || !window.createWidgetsFromOTUI) {
+                    showToast('OTUI parser not loaded. Please refresh the page.');
+                    return;
+                }
+                
+                console.log('Parsing imported OTUI file:', file.name);
+                const parsedWidgets = window.parseOTUICode(text);
+                console.log('Parsed widgets:', parsedWidgets);
+                
+                if (parsedWidgets.length === 0) {
+                    showToast('No widgets found in file. Check the file format.');
+                    return;
+                }
+                
+                // Ask user if they want to clear canvas or append
+                const append = confirm('Append widgets to canvas? (Cancel to clear canvas first)');
+                
+                if (!append) {
+                    const content = document.getElementById('editorContent');
+                    if (content) {
+                        content.innerHTML = '';
+                        selectWidget(null);
+                    }
+                }
+                
+                // Create widgets on canvas
+                const content = document.getElementById('editorContent');
+                const createdWidgets = window.createWidgetsFromOTUI(parsedWidgets, content, 50, 50);
+                
+                if (createdWidgets.length > 0) {
+                    // Select first widget
+                    selectWidget(createdWidgets[0]);
+                    
+                    // Save state
+                    saveState();
+                    updateAll();
+                    
+                    showToast(`Successfully imported ${createdWidgets.length} widget(s) from ${file.name}!`);
+                } else {
+                    showToast('Failed to create widgets. Check console for errors.');
+                }
+                
+                // Reset input
+                e.target.value = '';
+            } catch (error) {
+                console.error('Error importing OTUI file:', error);
+                showToast('Error importing file: ' + error.message);
+            }
+        });
+    }
+    
     // Load saved path on startup
     if (window.OTUIStyleLoader) {
         const savedPath = window.OTUIStyleLoader.getClientDataPath();
@@ -671,4 +1011,49 @@ window.initOTUIBuilder = function() {
     showToast('OTUI Builder v3.6.0 — READY!');
     console.log('OTUI Builder v3.6.0 — READY!');
     console.log('Keyboard shortcuts: Ctrl+Z (undo), Ctrl+Y/Ctrl+Shift+Z (redo), Del/Backspace (delete), Ctrl+C (copy), Ctrl+V (paste), Ctrl+D (duplicate)');
+    
+    // Initialize right sidebar resize functionality
+    const rightSidebar = document.getElementById('rightSidebar');
+    const rightSidebarResize = document.getElementById('rightSidebarResize');
+    
+    if (rightSidebar && rightSidebarResize) {
+        // Load saved width from localStorage
+        const savedWidth = localStorage.getItem('rightSidebarWidth');
+        if (savedWidth) {
+            rightSidebar.style.width = savedWidth + 'px';
+        }
+        
+        let isResizing = false;
+        let startX = 0;
+        let startWidth = 0;
+        
+        rightSidebarResize.addEventListener('mousedown', (e) => {
+            isResizing = true;
+            startX = e.clientX;
+            startWidth = rightSidebar.offsetWidth;
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            e.preventDefault();
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            if (!isResizing) return;
+            
+            const diff = startX - e.clientX; // Inverted because we're resizing from left
+            const newWidth = Math.max(200, Math.min(800, startWidth + diff)); // Min 200px, max 800px
+            
+            rightSidebar.style.width = newWidth + 'px';
+        });
+        
+        document.addEventListener('mouseup', () => {
+            if (isResizing) {
+                isResizing = false;
+                document.body.style.cursor = '';
+                document.body.style.userSelect = '';
+                
+                // Save width to localStorage
+                localStorage.setItem('rightSidebarWidth', rightSidebar.offsetWidth);
+            }
+        });
+    }
 };

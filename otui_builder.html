@@ -18,6 +18,7 @@
         <header class="app-header">
             <div class="header-left"><div class="logo"><span class="logo-icon">OTUI</span><span>Builder v3.6.0</span></div></div>
             <div class="header-right">
+                <button class="btn btn-secondary" id="aiGenerateBtn" title="AI Generate Module">✨ AI Generate</button>
                 <button class="btn btn-secondary" id="settingsBtn" title="Settings">⚙ Settings</button>
                 <button class="btn btn-secondary" id="newBtn">New</button>
                 <button class="btn btn-accent" id="exportBtn">Export Module</button>
@@ -61,7 +62,8 @@
                 </div>
             </main>
 
-            <aside class="sidebar sidebar-right">
+            <aside class="sidebar sidebar-right" id="rightSidebar">
+                <div class="sidebar-resize-handle" id="rightSidebarResize"></div>
                 <div class="sidebar-header">
                     <h2>Properties & Code</h2>
                     <div id="editingIndicator" style="display:none;">Editing: <span id="editingWidgetType"></span></div>
@@ -78,7 +80,12 @@
                     <div class="panel">
                         <div class="panel-header"><h3>Code</h3></div>
                         <div class="panel-content">
-                            <button class="btn btn-accent" id="viewCodeBtn" style="width: 100%;">View Code</button>
+                            <button class="btn btn-accent" id="viewCodeBtn" style="width: 100%; margin-bottom: 0.5rem;">View Code</button>
+                            <button class="btn btn-secondary" id="aiGenerateBtnSidebar" style="width: 100%; margin-bottom: 0.5rem;">✨ AI Generate</button>
+                            <label class="btn btn-secondary" style="width: 100%; margin-bottom: 0; cursor: pointer; text-align: center; display: block;">
+                                📁 Import OTUI File
+                                <input type="file" id="importOTUIFileInput" accept=".otui" style="display: none;">
+                            </label>
                         </div>
                     </div>
                 </div>
@@ -175,6 +182,89 @@
                     </small>
                 </div>
                 <div id="settingsStatus" style="margin-top: 10px; padding: 8px; border-radius: 4px; display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="aiGenerateModal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width: 800px; max-height: 90vh; overflow-y: auto;">
+            <div class="modal-header">
+                <h2>✨ AI Module Generator</h2>
+                <button class="modal-close" aria-label="Close">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border-primary);">
+                    <h3 style="font-size: 0.95rem; margin-bottom: 15px; color: var(--text-primary); font-weight: 600;">⚙️ AI Settings</h3>
+                    <div class="form-group">
+                        <label style="font-weight: 600; margin-bottom: 8px; display: block;">AI Provider</label>
+                        <select id="aiProviderSelect" style="width: 100%; padding: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: 4px;">
+                            <optgroup label="Free Providers">
+                                <option value="groq">Groq (Free - Very Fast)</option>
+                                <option value="gemini">Google Gemini (Free)</option>
+                                <option value="huggingface">Hugging Face (Free)</option>
+                                <option value="openrouter">OpenRouter (Free Models)</option>
+                            </optgroup>
+                            <optgroup label="Paid Providers">
+                                <option value="openai">OpenAI (GPT-4, GPT-3.5)</option>
+                                <option value="anthropic">Anthropic (Claude)</option>
+                            </optgroup>
+                            <optgroup label="Local/Self-Hosted">
+                                <option value="ollama">Ollama (Local)</option>
+                                <option value="local">Custom API Endpoint</option>
+                            </optgroup>
+                        </select>
+                        <small style="color: #94a3b8; display: block; margin-top: 6px;">
+                            <strong>Free options:</strong> Groq (fastest), Gemini, Hugging Face, OpenRouter. Get API keys from their websites.
+                        </small>
+                    </div>
+                    <div class="form-group" style="margin-top: 15px;">
+                        <label style="font-weight: 600; margin-bottom: 8px; display: block;">API Key</label>
+                        <input type="password" id="aiApiKeyInput" placeholder="Enter your API key" style="width: 100%; padding: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: 4px;">
+                        <small style="color: #94a3b8; display: block; margin-top: 6px;">
+                            Your API key is stored locally and never sent to our servers.
+                        </small>
+                    </div>
+                    <div class="form-group" style="margin-top: 15px;">
+                        <label style="font-weight: 600; margin-bottom: 8px; display: block;">Model Name</label>
+                        <input type="text" id="aiModelInput" placeholder="See suggestions below" style="width: 100%; padding: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: 4px;">
+                        <small style="color: #94a3b8; display: block; margin-top: 6px;">
+                            <strong>Suggestions:</strong><br>
+                            Groq: llama-3.1-8b-instant, mixtral-8x7b-32768<br>
+                            Gemini: gemini-pro, gemini-pro-vision<br>
+                            Hugging Face: mistralai/Mistral-7B-Instruct-v0.2<br>
+                            OpenRouter: google/gemini-flash-1.5, meta-llama/llama-3.1-8b-instruct<br>
+                            OpenAI: gpt-4o-mini, gpt-3.5-turbo<br>
+                            Anthropic: claude-3-haiku-20240307
+                        </small>
+                    </div>
+                    <div class="form-group" id="aiEndpointGroup" style="margin-top: 15px; display: none;">
+                        <label style="font-weight: 600; margin-bottom: 8px; display: block;">API Endpoint (for Ollama/Local)</label>
+                        <input type="text" id="aiEndpointInput" placeholder="http://localhost:11434" style="width: 100%; padding: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: 4px;">
+                    </div>
+                    <button class="btn btn-accent" id="saveAISettingsBtn" style="width: 100%; margin-top: 15px;">Save AI Settings</button>
+                </div>
+                
+                <div class="form-group">
+                    <label style="font-weight: 600; margin-bottom: 8px; display: block;">Describe what you want to create:</label>
+                    <textarea id="aiDescriptionInput" placeholder="Example: Create a health bar widget with a red background, showing percentage text, size 200x30 pixels" rows="4" style="width: 100%; padding: 10px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: 4px; font-family: inherit; resize: vertical;"></textarea>
+                    <small style="color: #94a3b8; display: block; margin-top: 6px;">
+                        Be specific about widget types, sizes, colors, and layout. The AI will use your loaded OTUI styles as context.
+                    </small>
+                </div>
+                <div id="aiProgress" style="display: none; margin-top: 15px; padding: 12px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-secondary); font-size: 0.9rem;"></div>
+                <div id="aiGeneratedCode" style="display: none; margin-top: 15px;">
+                    <label style="font-weight: 600; margin-bottom: 8px; display: block;">Generated Code:</label>
+                    <pre id="aiCodePreview" style="background: var(--bg-code); padding: 12px; border-radius: 4px; overflow-x: auto; max-height: 300px; font-size: 0.85rem; color: var(--text-primary); border: 1px solid var(--border-primary);"></pre>
+                    <div style="margin-top: 15px; display: flex; gap: 10px;">
+                        <button class="btn btn-accent" id="aiApplyCodeBtn">Apply to Canvas</button>
+                        <button class="btn btn-secondary" id="aiCopyCodeBtn">Copy Code</button>
+                        <button class="btn btn-secondary" id="aiRegenerateBtn">Regenerate</button>
+                    </div>
+                </div>
+                <div style="margin-top: 20px; display: flex; gap: 10px;">
+                    <button class="btn btn-accent" id="aiGenerateBtnModal" style="flex: 1;">Generate</button>
+                    <button class="btn btn-secondary" id="aiCancelBtn">Cancel</button>
+                </div>
             </div>
         </div>
     </div>

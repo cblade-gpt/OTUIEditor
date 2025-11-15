@@ -1,4 +1,30 @@
 // OBJS/codegen.js - OTUI and Lua code generation
+
+// Helper function to get original property name from camelCase dataset key
+function getOriginalPropertyName(widget, camelKey) {
+    if (!widget.dataset._keyMap) {
+        // No mapping stored, assume camelKey is already the original (for backwards compatibility)
+        return camelKey;
+    }
+    try {
+        const keyMap = JSON.parse(widget.dataset._keyMap);
+        return keyMap[camelKey] || camelKey;
+    } catch (e) {
+        return camelKey;
+    }
+}
+
+// Helper function to convert camelCase to hyphenated (for dataset lookup)
+function toCamelCase(str) {
+    return str.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+}
+
+// Helper function to get value from dataset (handles camelCase conversion)
+function getDatasetValue(widget, key) {
+    const camelKey = toCamelCase(key);
+    return widget.dataset[camelKey];
+}
+
 function generateOTUICode() {
     function recurse(widget, indent = '') {
         if (!widget) return '';
@@ -47,10 +73,12 @@ function generateOTUICode() {
         }
 
         // Include title/text if set, or if it's a root widget with a title property
-        if (widget.dataset.title) {
-            code += `${indent}  !text: tr('${widget.dataset.title}')\n`;
-        } else if (isRoot && widget.dataset.text) {
-            code += `${indent}  !text: tr('${widget.dataset.text}')\n`;
+        const title = getDatasetValue(widget, 'title');
+        const text = getDatasetValue(widget, 'text');
+        if (title) {
+            code += `${indent}  !text: tr('${title}')\n`;
+        } else if (isRoot && text) {
+            code += `${indent}  !text: tr('${text}')\n`;
         }
 
         // Common OTUI styling properties that should be included in code generation
@@ -101,7 +129,7 @@ function generateOTUICode() {
                 return;
             }
             
-            const val = widget.dataset[k];
+            const val = getDatasetValue(widget, k);
             // For image-source, text-align, image-color - check even if empty (might be explicitly set)
             const isSpecialProperty = (k === 'image-source' || k === 'text-align' || k === 'image-color');
             
@@ -133,18 +161,19 @@ function generateOTUICode() {
                     shouldInclude = false;
                 }
                 
-                if (shouldInclude) {
-                    let formattedValue;
-                    let propertyName = k;
+                    if (shouldInclude) {
+                        let formattedValue;
+                        // Get original property name (handles camelCase conversion)
+                        let propertyName = getOriginalPropertyName(widget, toCamelCase(k));
                     
                     // Handle text-offset (combine x and y)
                     if (k === 'text-offset-x' || k === 'text-offset-y') {
-                        const offsetX = widget.dataset['text-offset-x'] || '0';
-                        const offsetY = widget.dataset['text-offset-y'] || '0';
+                        const offsetX = getDatasetValue(widget, 'text-offset-x') || '0';
+                        const offsetY = getDatasetValue(widget, 'text-offset-y') || '0';
                         // Always output text-offset if either value is set (even if 0, user might have explicitly set it)
                         // But check if at least one is non-zero or both are explicitly set
-                        const xSet = widget.dataset['text-offset-x'] !== undefined;
-                        const ySet = widget.dataset['text-offset-y'] !== undefined;
+                        const xSet = getDatasetValue(widget, 'text-offset-x') !== undefined;
+                        const ySet = getDatasetValue(widget, 'text-offset-y') !== undefined;
                         if (xSet || ySet || offsetX !== '0' || offsetY !== '0') {
                             propertyName = 'text-offset';
                             formattedValue = `${offsetX} ${offsetY}`;

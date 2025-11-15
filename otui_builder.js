@@ -8,6 +8,8 @@ const scripts = [
     'OBJS/anchors.js',
     'OBJS/codegen.js',
     'OBJS/preview.js',
+    'OBJS/ai-generator.js',
+    'OBJS/otui-parser.js',
     'OBJS/init.js'
 ];
 

@@ -26,6 +26,22 @@ function updatePreview() {
         // Create new widget element
         const widget = document.createElement('div');
         
+        // IMPORTANT: Set widget class and container class if applicable
+        // Always ensure 'widget' class is present
+        widget.className = originalWidget.className || 'widget';
+        if (!widget.classList.contains('widget')) {
+            widget.classList.add('widget');
+        }
+        // Copy all classes from original widget
+        if (originalWidget.classList.contains('container')) {
+            widget.classList.add('container');
+        }
+        // Copy widget type class (e.g., UIWindow, UIButton, etc.)
+        const type = originalWidget.dataset.type;
+        if (type) {
+            widget.classList.add(type);
+        }
+        
         // Copy dataset attributes
         Object.keys(originalWidget.dataset).forEach(key => {
             widget.dataset[key] = originalWidget.dataset[key];
@@ -34,7 +50,7 @@ function updatePreview() {
         // Copy ID
         widget.id = originalWidget.id;
         
-        const type = originalWidget.dataset.type;
+        // Type already defined above, just check if it exists
         if (!type) return widget;
         
         // Preserve size and position from original
@@ -50,9 +66,11 @@ function updatePreview() {
         widget.style.top = originalTop + 'px';
         
         // Get child widgets from original before cloning content
+        // Look for direct children that are widgets (have .widget class or dataset.type)
         const childWidgets = [];
         [...originalWidget.children].forEach(child => {
-            if (child.classList.contains('widget')) {
+            // Check if it's a widget by class or by having dataset.type
+            if (child.classList.contains('widget') || child.dataset.type) {
                 childWidgets.push(child);
             }
         });
