@@ -324,12 +324,20 @@ window.initOTUIBuilder = function() {
                         window.OTUIStyleLoader.resolveInheritance();
                     }
                     
+                    // Discover new widgets from loaded styles and add to palette
+                    discoverWidgetsFromStyles();
+                    
                     // Reapply styles to all existing widgets
-                    applyStylesToAllWidgets();
+                    const appliedCount = applyStylesToAllWidgets();
                     
                     if (status) {
-                        status.style.background = '#10b981';
-                        status.textContent = `✓ Loaded ${loaded.length} style file(s)! Now load images in Step 2.`;
+                        if (appliedCount > 0) {
+                            status.style.background = '#10b981';
+                            status.textContent = `✓ Loaded ${loaded.length} style file(s)! Styles applied to ${appliedCount} widget(s). Now load images in Step 2.`;
+                        } else {
+                            status.style.background = '#10b981';
+                            status.textContent = `✓ Loaded ${loaded.length} style file(s)! Now load images in Step 2, then create widgets.`;
+                        }
                     }
                 } catch (error) {
                     if (status) {
@@ -361,12 +369,19 @@ window.initOTUIBuilder = function() {
                 try {
                     const loaded = await window.OTUIStyleLoader.loadImageFiles(files);
                     
+                    console.log(`Image cache now has ${Object.keys(window.OTUIStyleLoader.imageCache()).length} images`);
+                    
                     // Reapply styles to all widgets (now with images available)
-                    applyStylesToAllWidgets();
+                    const appliedCount = applyStylesToAllWidgets();
                     
                     if (status) {
-                        status.style.background = '#10b981';
-                        status.textContent = `✓ Loaded ${loaded.length} image(s)! Styles and images applied to widgets.`;
+                        if (appliedCount > 0) {
+                            status.style.background = '#10b981';
+                            status.textContent = `✓ Loaded ${loaded.length} image(s)! Styles and images applied to ${appliedCount} widget(s).`;
+                        } else {
+                            status.style.background = '#f59e0b';
+                            status.textContent = `✓ Loaded ${loaded.length} image(s)! Create widgets to see styled UI.`;
+                        }
                     }
                 } catch (error) {
                     if (status) {
@@ -384,18 +399,87 @@ window.initOTUIBuilder = function() {
         const widgets = document.querySelectorAll('.widget');
         let appliedCount = 0;
         
+        console.log(`Applying styles to ${widgets.length} widget(s)...`);
+        
         widgets.forEach(widget => {
             const type = widget.dataset.type;
             if (type && window.OTUIStyleLoader && window.OTUIStyleLoader.applyOTUIStyleToWidget) {
                 if (window.OTUIStyleLoader.applyOTUIStyleToWidget(widget, type)) {
                     appliedCount++;
+                } else {
+                    console.warn(`Failed to apply styles to ${type}`);
                 }
             }
         });
         
+        console.log(`✓ Applied styles to ${appliedCount}/${widgets.length} widget(s)`);
         updateAll();
         return appliedCount;
     }
+    
+    // Discover widgets from loaded OTUI styles and add them to the palette
+    function discoverWidgetsFromStyles() {
+        if (!window.OTUIStyleLoader || !window.OTUIStyleLoader.loadedStyles) return;
+        
+        const styles = window.OTUIStyleLoader.loadedStyles();
+        const styleNames = Object.keys(styles);
+        const palette = document.getElementById('widgetPalette');
+        if (!palette) return;
+        
+        // Map of style names to widget types (OTUI style -> UIWidget format)
+        const styleToWidgetMap = {
+            'Window': 'UIWindow',
+            'Label': 'UILabel',
+            'Panel': 'UIPanel',
+            'ScrollablePanel': 'UIScrollArea',
+            'VerticalScrollBar': 'UIScrollBar',
+            'HorizontalScrollBar': 'UIScrollBar',
+            'MiniWindow': 'UIMiniWindow',
+            'Button': 'UIButton',
+            'TextEdit': 'UITextEdit',
+            'CheckBox': 'UICheckBox',
+            'RadioButton': 'UIRadioButton',
+            'ProgressBar': 'UIProgressBar',
+            'Item': 'UIItem',
+            'Image': 'UIImage',
+            'Sprite': 'UISprite',
+            'Separator': 'UISeparator',
+            'HorizontalSeparator': 'UIHorizontalSeparator',
+            'VerticalSeparator': 'UIVerticalSeparator'
+        };
+        
+        let addedCount = 0;
+        styleNames.forEach(styleName => {
+            // Check if this style corresponds to a widget type
+            const widgetType = styleToWidgetMap[styleName] || (styleName.startsWith('UI') ? styleName : `UI${styleName}`);
+            
+            // Only add if not already in OTUI_WIDGETS
+            if (!OTUI_WIDGETS[widgetType] && styleName) {
+                // Try to infer category and properties from style
+                const style = styles[styleName];
+                const isContainer = styleName.includes('Panel') || styleName.includes('Window') || 
+                                   styleName.includes('Area') || styleName.includes('Layout');
+                
+                // Add to OTUI_WIDGETS dynamically
+                OTUI_WIDGETS[widgetType] = {
+                    category: isContainer ? "Layout" : "Display",
+                    isContainer: isContainer,
+                    props: {},
+                    events: {}
+                };
+                
+                addedCount++;
+            }
+        });
+        
+        if (addedCount > 0) {
+            console.log(`Discovered ${addedCount} new widget(s) from styles, updating palette...`);
+            populateWidgetPalette();
+        }
+    }
+    
+    // Enable debug mode for styles (set window.DEBUG_STYLES = true in console to see detailed logs)
+    window.DEBUG_STYLES = false;
     
     // Save settings button (for folder path method)
     const saveSettingsBtn = document.getElementById('saveSettingsBtn');

@@ -66,49 +66,103 @@ function parseOTUIFile(content) {
     const lines = content.split('\n');
     let currentStyle = null;
     let currentState = null;
-    let indentLevel = 0;
+    let baseIndent = 0;
     
     for (let i = 0; i < lines.length; i++) {
-        let line = lines[i].trim();
-        if (!line || line.startsWith('//')) continue;
+        const originalLine = lines[i];
+        const trimmedLine = originalLine.trim();
+        
+        // Skip empty lines and comments
+        if (!trimmedLine || trimmedLine.startsWith('//')) continue;
+        
+        // Calculate indentation (spaces or tabs at start)
+        const indent = originalLine.match(/^(\s*)/)[1].length;
         
         // Check for style definition (WidgetName < ParentWidget or WidgetName)
-        const styleMatch = line.match(/^([A-Za-z][A-Za-z0-9_]*)\s*(?:<\s*([A-Za-z][A-Za-z0-9_]*))?/);
-        if (styleMatch) {
+        // Examples: "Window < UIWindow", "Button", "Panel < FlatPanel"
+        const styleMatch = trimmedLine.match(/^([A-Za-z][A-Za-z0-9_]*)\s*(?:<\s*([A-Za-z][A-Za-z0-9_]*))?/);
+        if (styleMatch && indent === 0) {
             const styleName = styleMatch[1];
             const parentName = styleMatch[2];
             
             currentStyle = {
                 name: styleName,
-                parent: parentName,
+                parent: parentName || null,
                 properties: {},
                 states: {}
             };
             styles[styleName] = currentStyle;
             currentState = null;
-            indentLevel = 0;
+            baseIndent = 0;
             continue;
         }
         
         // Check for state ($hover, $pressed, etc.)
-        const stateMatch = line.match(/^\$([a-z]+)/);
-        if (stateMatch) {
+        const stateMatch = trimmedLine.match(/^\$([a-z]+)/);
+        if (stateMatch && currentStyle) {
             const stateName = stateMatch[1];
             if (!currentStyle.states[stateName]) {
                 currentStyle.states[stateName] = {};
             }
             currentState = currentStyle.states[stateName];
+            baseIndent = indent;
             continue;
         }
         
-        // Check for property (key: value)
-        const propMatch = line.match(/^([a-z-]+):\s*(.+)$/);
-        if (propMatch && currentStyle) {
-            const key = propMatch[1];
-            const value = propMatch[2].trim();
+        // Only process properties if we have a current style
+        if (!currentStyle) continue;
+        
+        // Reset state if we're back at base indent level (end of state block)
+        if (currentState && indent <= baseIndent && !trimmedLine.startsWith('$')) {
+            currentState = null;
+            baseIndent = 0;
+        }
+        
+        // Check for property with colon (key: value)
+        // Examples: "image-source: /images/ui/button.png", "padding: 5", "!text: Hello"
+        const propMatchColon = trimmedLine.match(/^([!a-z-]+):\s*(.+)$/);
+        if (propMatchColon) {
+            const key = propMatchColon[1];
+            let value = propMatchColon[2].trim();
+            
+            // Remove quotes if present
+            if ((value.startsWith('"') && value.endsWith('"')) || 
+                (value.startsWith("'") && value.endsWith("'"))) {
+                value = value.slice(1, -1);
+            }
             
             const target = currentState || currentStyle.properties;
             target[key] = value;
+            continue;
+        }
+        
+        // Check for property without colon (key value) - space-separated
+        // Examples: "size 100 50", "image-clip 0 0 32 32"
+        const propMatchSpace = trimmedLine.match(/^([a-z-]+)\s+(.+)$/);
+        if (propMatchSpace) {
+            const key = propMatchSpace[1];
+            const value = propMatchSpace[2].trim();
+            
+            const target = currentState || currentStyle.properties;
+            target[key] = value;
+            continue;
+        }
+        
+        // Debug: log unparsed lines to help identify format issues
+        if (window.DEBUG_PARSE && indent > 0 && currentStyle) {
+            console.log(`Unparsed line in ${currentStyle.name}: "${trimmedLine}" (indent: ${indent})`);
+        }
+        
+        // Check for boolean properties (just the key name means true)
+        // Examples: "opacity", "focusable"
+        const boolPropMatch = trimmedLine.match(/^([a-z-]+)$/);
+        if (boolPropMatch && indent > 0) {
+            const key = boolPropMatch[1];
+            const target = currentState || currentStyle.properties;
+            // Only set if not already set (avoid overwriting with true)
+            if (target[key] === undefined) {
+                target[key] = 'true';
+            }
         }
     }
     
@@ -395,8 +449,18 @@ function resolveInheritance() {
     
     // Resolve all styles
     for (const styleName in loadedStyles) {
+        const style = loadedStyles[styleName];
         const resolved = resolveStyle(styleName);
-        loadedStyles[styleName].resolved = resolved;
+        style.resolved = resolved;
+        
+        // Also resolve state properties (merge with base resolved properties)
+        if (style.states) {
+            for (const stateName in style.states) {
+                const stateProps = style.states[stateName];
+                // Merge base resolved properties with state-specific properties
+                style.states[stateName] = { ...resolved, ...stateProps };
+            }
+        }
     }
 }
 
@@ -591,10 +655,45 @@ function applyOTUIStyleToWidget(widget, widgetType) {
         return false;
     }
     
-    const style = getStyleForWidget(widgetType);
-    if (!style) {
+    const styleObj = getStyleForWidget(widgetType);
+    if (!styleObj) {
         // No style found - styles might not be loaded or widget type doesn't have a style
         return false;
+    }
+    
+    // Get the actual style object (not just resolved properties)
+    const styleName = widgetType.replace('UI', '');
+    const fullStyle = loadedStyles[styleName];
+    
+    // Merge base style with state-specific style (e.g., $checked, $unchecked)
+    let style = { ...styleObj };
+    
+    // Check for widget state (for checkboxes: checked/unchecked)
+    if (fullStyle && fullStyle.states) {
+        // Check if widget has checked state (for checkboxes)
+        const isChecked = widget.dataset.checked === 'true' || widget.classList.contains('checked');
+        
+        // Use resolved state properties (they already have base properties merged)
+        if (isChecked && fullStyle.states.checked) {
+            // Merge checked state properties (already resolved with base)
+            style = { ...style, ...fullStyle.states.checked };
+        } else if (!isChecked && fullStyle.states.unchecked) {
+            // Merge unchecked state properties (already resolved with base)
+            style = { ...style, ...fullStyle.states.unchecked };
+        }
+        
+        // Also check for hover/pressed states if needed
+        if (widget.classList.contains('hover') && fullStyle.states.hover) {
+            style = { ...style, ...fullStyle.states.hover };
+        }
+        if (widget.classList.contains('pressed') && fullStyle.states.pressed) {
+            style = { ...style, ...fullStyle.states.pressed };
+        }
+    }
+    
+    // Debug: log what we're applying
+    if (window.DEBUG_STYLES) {
+        console.log(`Applying styles to ${widgetType}:`, Object.keys(style).slice(0, 10));
     }
     
     // For images, we need the data path, but if not set, we can still apply other styles
@@ -616,6 +715,46 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     // Remove default builder styles that might interfere
     widget.style.borderRadius = '0'; // OTUI widgets typically don't use border-radius
     
+    // Check for image-clip FIRST (even without image-source) to enforce size
+    // This applies to ALL widgets with image-clip, regardless of whether image is loaded
+    const imageClip = style['image-clip'];
+    let clipX = 0, clipY = 0, clipW = null, clipH = null;
+    let hasClip = false;
+    
+    if (imageClip) {
+        const clipParts = imageClip.trim().split(/\s+/);
+        if (clipParts.length >= 4) {
+            clipX = parseInt(clipParts[0] || '0', 10);
+            clipY = parseInt(clipParts[1] || '0', 10);
+            clipW = parseInt(clipParts[2] || '0', 10);
+            clipH = parseInt(clipParts[3] || '0', 10);
+            hasClip = clipW > 0 && clipH > 0;
+            
+            // ALWAYS set size to clip dimensions if we have clip (for ALL widgets)
+            // This applies to buttons, checkboxes, separators, etc.
+            if (hasClip) {
+                // Remove min-width/min-height restrictions for clipped widgets
+                // This is critical for separators which are often 1-3px
+                widget.style.minWidth = '0';
+                widget.style.minHeight = '0';
+                widget.style.maxWidth = 'none';
+                widget.style.maxHeight = 'none';
+                
+                // ALWAYS set size to clip dimensions - override any preserved sizes
+                // This ensures separators, buttons, checkboxes all show the correct clipped size
+                widget.style.width = `${clipW}px`;
+                widget.style.height = `${clipH}px`;
+                
+                // Store clip info - will be used when image is loaded
+                widget.dataset.clipSizeApplied = 'true';
+                widget.dataset.clipWidth = clipW;
+                widget.dataset.clipHeight = clipH;
+                widget.dataset.clipX = clipX;
+                widget.dataset.clipY = clipY;
+            }
+        }
+    }
+    
     // Handle image-source with border (9-slice scaling) - do this first as it affects borders
     if (style['image-source']) {
         let imagePath = style['image-source'].replace(/^\//, '');
@@ -628,27 +767,134 @@ function applyOTUIStyleToWidget(widget, widgetType) {
             imageUrl = getImageUrl(`${imagePath}.png`);
         }
         
-        if (imageUrl) {
-            // Handle image-clip (sprite sheet coordinates: x y width height)
-            const imageClip = style['image-clip'];
-            let clipX = 0, clipY = 0, clipW = null, clipH = null;
-            
-            if (imageClip) {
-                const clipParts = imageClip.split(/\s+/);
-                clipX = parseInt(clipParts[0] || '0');
-                clipY = parseInt(clipParts[1] || '0');
-                clipW = parseInt(clipParts[2] || '0');
-                clipH = parseInt(clipParts[3] || '0');
+        // Debug image lookup
+        if (window.DEBUG_STYLES) {
+            if (imageUrl) {
+                console.log(`✓ Found image for ${widgetType}: ${imagePath} -> ${imageUrl.substring(0, 50)}...`);
+            } else {
+                console.warn(`✗ Image not found for ${widgetType}: ${imagePath}`);
+                console.log(`  Available image paths (first 5):`, Object.keys(imageCache).slice(0, 5));
             }
-            
+        }
+        
+        if (imageUrl) {
+            // Use the hasClip variable we already calculated above
             // Handle image borders (9-slice scaling)
-            const borderTop = parseInt(style['image-border-top'] || style['image-border'] || '0');
-            const borderBottom = parseInt(style['image-border-bottom'] || style['image-border'] || '0');
-            const borderLeft = parseInt(style['image-border-left'] || style['image-border'] || '0');
-            const borderRight = parseInt(style['image-border-right'] || style['image-border'] || '0');
+            const borderTop = parseInt(style['image-border-top'] || style['image-border'] || '0', 10);
+            const borderBottom = parseInt(style['image-border-bottom'] || style['image-border'] || '0', 10);
+            const borderLeft = parseInt(style['image-border-left'] || style['image-border'] || '0', 10);
+            const borderRight = parseInt(style['image-border-right'] || style['image-border'] || '0', 10);
+            const hasBorder = borderTop || borderBottom || borderLeft || borderRight;
             
-            if (borderTop || borderBottom || borderLeft || borderRight) {
-                // Use border-image for 9-slice scaling
+            // Priority: image-clip takes precedence over border-image for sprite sheets
+            // Use the clip info we already calculated above
+            if (hasClip && clipW > 0 && clipH > 0) {
+                // CROP the image: Position background to show clip region, then crop to exact size
+                widget.style.backgroundImage = `url("${imageUrl}")`;
+                widget.style.backgroundRepeat = 'no-repeat';
+                widget.style.backgroundColor = 'transparent';
+                
+                // CROP: Use overflow hidden to crop everything outside the clip region
+                widget.style.overflow = 'hidden';
+                
+                // Remove min-width/min-height restrictions
+                widget.style.minWidth = '0';
+                widget.style.minHeight = '0';
+                
+                // Size should already be set above when we detected image-clip
+                // But ensure it's correct - ALWAYS use clip dimensions
+                widget.style.width = `${clipW}px`;
+                widget.style.height = `${clipH}px`;
+                widget.style.minWidth = '0';
+                widget.style.minHeight = '0';
+                
+                // Set initial background-size and position IMMEDIATELY (before image loads)
+                // Use 'auto' to use the image's natural size - this ensures correct clipping from the start
+                // The background-position offsets to show the clip region
+                // overflow:hidden crops to the widget size (clipW x clipH)
+                widget.style.backgroundSize = 'auto'; // Use natural image size - ensures correct clipping
+                widget.style.backgroundPosition = `${-clipX}px ${-clipY}px`;
+                
+                // Load image to get actual dimensions for proper scaling
+                const img = new Image();
+                img.onload = function() {
+                    const imgW = this.width;
+                    const imgH = this.height;
+                    widget.dataset.imageWidth = imgW;
+                    widget.dataset.imageHeight = imgH;
+                    
+                    // Update background-size with actual image dimensions for scaling
+                    // Calculate current scale based on widget size vs clip size
+                    const currentWidth = parseInt(widget.style.width) || clipW;
+                    const currentHeight = parseInt(widget.style.height) || clipH;
+                    const scaleX = currentWidth / clipW;
+                    const scaleY = currentHeight / clipH;
+                    
+                    // Only update if widget has been resized (scale != 1)
+                    // Otherwise keep 'auto' for natural size (correct clipping)
+                    if (Math.abs(scaleX - 1) > 0.01 || Math.abs(scaleY - 1) > 0.01) {
+                        widget.style.backgroundSize = `${imgW * scaleX}px ${imgH * scaleY}px`;
+                        widget.style.backgroundPosition = `${-clipX * scaleX}px ${-clipY * scaleY}px`;
+                    }
+                };
+                img.onerror = function() {
+                    // If image fails, keep using 'auto' for background-size
+                    widget.dataset.imageWidth = '0';
+                    widget.dataset.imageHeight = '0';
+                };
+                img.src = imageUrl;
+                
+                // Update stored clip info with image URL
+                widget.dataset.clipSizeApplied = 'true';
+                widget.dataset.clipWidth = clipW;
+                widget.dataset.clipHeight = clipH;
+                widget.dataset.clipX = clipX;
+                widget.dataset.clipY = clipY;
+                widget.dataset.originalImageUrl = imageUrl;
+                
+                // Add resize observer to scale the cropped image when widget is resized
+                // When user resizes, scale the background image proportionally
+                if (!widget.dataset.clipObserverAdded) {
+                    widget.dataset.clipObserverAdded = 'true';
+                    if (window.ResizeObserver) {
+                        const resizeObserver = new ResizeObserver(entries => {
+                            for (const entry of entries) {
+                                const el = entry.target;
+                                if (el.dataset.clipSizeApplied === 'true') {
+                                    const rect = el.getBoundingClientRect();
+                                    const currentWidth = rect.width;
+                                    const currentHeight = rect.height;
+                                    const clipW = parseInt(el.dataset.clipWidth || '0', 10);
+                                    const clipH = parseInt(el.dataset.clipHeight || '0', 10);
+                                    
+                                    if (clipW > 0 && clipH > 0) {
+                                        // Calculate scale factors (how much bigger/smaller than original clip)
+                                        const scaleX = currentWidth / clipW;
+                                        const scaleY = currentHeight / clipH;
+                                        
+                                        // Scale the background image proportionally
+                                        // If widget is 2x bigger, scale the full sprite sheet 2x
+                                        const clipX = parseInt(el.dataset.clipX || '0', 10);
+                                        const clipY = parseInt(el.dataset.clipY || '0', 10);
+                                        const imgW = parseInt(el.dataset.imageWidth || '0', 10) || (clipX + clipW);
+                                        const imgH = parseInt(el.dataset.imageHeight || '0', 10) || (clipY + clipH);
+                                        
+                                        el.style.backgroundSize = `${imgW * scaleX}px ${imgH * scaleY}px`;
+                                        el.style.backgroundPosition = `${-clipX * scaleX}px ${-clipY * scaleY}px`;
+                                    }
+                                }
+                            }
+                        });
+                        resizeObserver.observe(widget);
+                    }
+                }
+                
+                // Clear border-image if it was set
+                widget.style.borderImageSource = 'none';
+                widget.style.border = 'none';
+                
+            } else if (hasBorder) {
+                // 9-slice scaling mode: use border-image
                 widget.style.border = 'none';
                 widget.style.borderImageSource = `url("${imageUrl}")`;
                 widget.style.borderImageSlice = `${borderTop} ${borderRight} ${borderBottom} ${borderLeft} fill`;
@@ -657,44 +903,12 @@ function applyOTUIStyleToWidget(widget, widgetType) {
                 widget.style.borderImageOutset = '0';
                 widget.style.backgroundImage = 'none';
                 widget.style.backgroundColor = 'transparent';
-                
-                // If image-clip is specified, we need to use background-image with clip-path or create a sprite
-                if (imageClip && clipW && clipH) {
-                    // Use background-image with positioning for sprite sheets
-                    widget.style.backgroundImage = `url("${imageUrl}")`;
-                    widget.style.backgroundPosition = `-${clipX}px -${clipY}px`;
-                    widget.style.backgroundSize = 'auto';
-                    widget.style.backgroundRepeat = 'no-repeat';
-                    // Override border-image
-                    widget.style.borderImageSource = 'none';
-                    widget.style.border = 'none';
-                }
             } else {
-                // Use background image (with sprite sheet support)
+                // Regular image mode
                 widget.style.backgroundImage = `url("${imageUrl}")`;
                 widget.style.backgroundRepeat = 'no-repeat';
-                
-                if (imageClip && clipW && clipH) {
-                    // Sprite sheet: position the background to show the clipped portion
-                    widget.style.backgroundPosition = `-${clipX}px -${clipY}px`;
-                    widget.style.backgroundSize = 'auto';
-                    // Set size to match clip dimensions if not already set
-                    if (!preservedWidth || preservedWidth === 'auto' || preservedWidth === '') {
-                        widget.style.width = `${clipW}px`;
-                    }
-                    if (!preservedHeight || preservedHeight === 'auto' || preservedHeight === '') {
-                        widget.style.height = `${clipH}px`;
-                    }
-                } else {
-                    // Regular image
-                    widget.style.backgroundPosition = 'center';
-                    const border = parseInt(style['image-border'] || '0');
-                    if (border) {
-                        widget.style.backgroundSize = `calc(100% + ${border * 2}px)`;
-                    } else {
-                        widget.style.backgroundSize = '100% 100%';
-                    }
-                }
+                widget.style.backgroundPosition = 'center';
+                widget.style.backgroundSize = '100% 100%';
             }
         }
     }
@@ -783,21 +997,45 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     }
     
     // Handle size (but preserve if widget already has a size from user)
-    // Only apply default size if widget doesn't have a custom size
-    if (style.size) {
-        const [w, h] = style.size.split(/\s+/);
-        // Only set size if widget doesn't have a preserved size (user hasn't resized it)
-        if (w && (!preservedWidth || preservedWidth === '140px' || preservedWidth === 'auto' || preservedWidth === '')) {
-            widget.style.width = `${w}px`;
+    // Don't override if image-clip already set the size
+    if (!widget.dataset.clipSizeApplied) {
+        if (style.size) {
+            const [w, h] = style.size.split(/\s+/);
+            const sizeW = parseInt(w, 10);
+            const sizeH = parseInt(h, 10);
+            
+            // Apply size - even very small sizes (1-3px) should be respected
+            // This is critical for separators which are often 1-3px thick
+            // Remove min-width/min-height restrictions for small widgets
+            if (sizeW > 0 && sizeW < 10) {
+                widget.style.minWidth = '0';
+            }
+            if (sizeH > 0 && sizeH < 10) {
+                widget.style.minHeight = '0';
+            }
+            
+            // Only set if widget doesn't have a preserved size (user hasn't resized it)
+            if (w && sizeW > 0 && (!preservedWidth || preservedWidth === '140px' || preservedWidth === 'auto' || preservedWidth === '')) {
+                widget.style.width = `${sizeW}px`;
+            }
+            if (h && sizeH > 0 && (!preservedHeight || preservedHeight === '90px' || preservedHeight === 'auto' || preservedHeight === '')) {
+                widget.style.height = `${sizeH}px`;
+            }
         }
-        if (h && (!preservedHeight || preservedHeight === '90px' || preservedHeight === 'auto' || preservedHeight === '')) {
-            widget.style.height = `${h}px`;
+        
+        // Restore preserved dimensions if they were custom (but not if clip size was applied)
+        if (preservedWidth && preservedWidth !== '140px' && preservedWidth !== 'auto' && preservedWidth !== '') {
+            widget.style.width = preservedWidth;
         }
+        if (preservedHeight && preservedHeight !== '90px' && preservedHeight !== 'auto' && preservedHeight !== '') {
+            widget.style.height = preservedHeight;
+        }
+    } else {
+        // For widgets with image-clip, ensure min-width/min-height are removed
+        widget.style.minWidth = '0';
+        widget.style.minHeight = '0';
     }
-    
-    // Restore preserved dimensions if they were custom
-    if (preservedWidth && preservedWidth !== '140px') widget.style.width = preservedWidth;
-    if (preservedHeight && preservedHeight !== '90px') widget.style.height = preservedHeight;
+    // Note: Clip size re-enforcement moved to the absolute end of the function
     
     // Restore position
     if (preservedPosition) widget.style.position = preservedPosition;
@@ -827,6 +1065,10 @@ function applyOTUIStyleToWidget(widget, widgetType) {
         }
     }
     
+    // Don't re-enforce clip size - allow user to resize widgets with image-clip
+    // The background-position will still show the correct clipped region
+    // User can resize to see more of the sprite sheet or make it bigger
+    
     return true; // Styles were applied
 }
 
@@ -843,9 +1085,23 @@ async function loadImageFile(file, relativePath) {
         const blobUrl = URL.createObjectURL(file);
         imageCache[normalizedPath] = blobUrl;
         
+        // Also store with "images/" prefix if not present (for OTUI style references)
+        if (!normalizedPath.startsWith('images/')) {
+            imageCache[`images/${normalizedPath}`] = blobUrl;
+        }
+        
         // Also try variations (with/without extension, different cases)
-        const pathWithoutExt = normalizedPath.replace(/\.(png|jpg|jpeg)$/i, '');
+        const pathWithoutExt = normalizedPath.replace(/\.(png|jpg|jpeg|gif|bmp|webp)$/i, '');
         imageCache[pathWithoutExt] = blobUrl;
+        if (!pathWithoutExt.startsWith('images/')) {
+            imageCache[`images/${pathWithoutExt}`] = blobUrl;
+        }
+        
+        // Store filename only for fallback matching
+        const fileName = normalizedPath.split('/').pop();
+        if (fileName) {
+            imageCache[fileName] = blobUrl;
+        }
         
         resolve(blobUrl);
     });
@@ -907,16 +1163,32 @@ async function loadImageFiles(files) {
 function getImageUrl(imagePath) {
     if (!imagePath) return null;
     
-    // Normalize path
+    // Normalize path - OTUI paths are like "images/ui/button.png"
     let normalizedPath = imagePath.replace(/^\/+/, '').replace(/\\/g, '/').toLowerCase();
     
-    // Try exact match
+    // Try exact match first
     if (imageCache[normalizedPath]) {
         return imageCache[normalizedPath];
     }
     
+    // Try with "images/" prefix if not present
+    if (!normalizedPath.startsWith('images/')) {
+        const pathWithImages = `images/${normalizedPath}`;
+        if (imageCache[pathWithImages]) {
+            return imageCache[pathWithImages];
+        }
+    }
+    
+    // Try without "images/" prefix if present
+    if (normalizedPath.startsWith('images/')) {
+        const pathWithoutImages = normalizedPath.replace(/^images\//, '');
+        if (imageCache[pathWithoutImages]) {
+            return imageCache[pathWithoutImages];
+        }
+    }
+    
     // Try without extension
-    const pathWithoutExt = normalizedPath.replace(/\.(png|jpg|jpeg)$/i, '');
+    const pathWithoutExt = normalizedPath.replace(/\.(png|jpg|jpeg|gif|bmp|webp)$/i, '');
     if (imageCache[pathWithoutExt]) {
         return imageCache[pathWithoutExt];
     }
@@ -927,11 +1199,32 @@ function getImageUrl(imagePath) {
         if (imageCache[pathWithPng]) {
             return imageCache[pathWithPng];
         }
+        // Also try with images/ prefix
+        const pathWithImagesPng = `images/${pathWithPng}`;
+        if (imageCache[pathWithImagesPng]) {
+            return imageCache[pathWithImagesPng];
+        }
     }
     
-    // Try partial matches (for nested paths)
+    // Try filename-only match (for cases where path structure differs)
+    const fileName = normalizedPath.split('/').pop();
+    if (fileName && imageCache[fileName]) {
+        return imageCache[fileName];
+    }
+    
+    // Try partial matches (for nested paths) - check if any cached path ends with our path
     for (const cachedPath in imageCache) {
-        if (cachedPath.endsWith(normalizedPath) || normalizedPath.endsWith(cachedPath)) {
+        // Check if cached path ends with our normalized path
+        if (cachedPath.endsWith(normalizedPath)) {
+            return imageCache[cachedPath];
+        }
+        // Check if normalized path ends with cached path (reverse match)
+        if (normalizedPath.endsWith(cachedPath)) {
+            return imageCache[cachedPath];
+        }
+        // Check if filenames match
+        const cachedFileName = cachedPath.split('/').pop();
+        if (fileName && cachedFileName === fileName) {
             return imageCache[cachedPath];
         }
     }
@@ -951,7 +1244,17 @@ async function loadOTUIFileFromFile(file) {
                 const filename = file.name;
                 styleCache[filename] = styles;
                 Object.assign(loadedStyles, styles);
-                console.log(`✓ Loaded ${filename}: ${Object.keys(styles).length} styles`);
+                
+                // Debug: show property count for first style
+                const firstStyleName = Object.keys(styles)[0];
+                if (firstStyleName) {
+                    const firstStyle = styles[firstStyleName];
+                    const propCount = Object.keys(firstStyle.properties || {}).length;
+                    console.log(`✓ Loaded ${filename}: ${Object.keys(styles).length} styles (${firstStyleName} has ${propCount} properties)`);
+                } else {
+                    console.log(`✓ Loaded ${filename}: ${Object.keys(styles).length} styles`);
+                }
+                
                 resolve(styles);
             } catch (error) {
                 console.error(`Error parsing ${file.name}:`, error);

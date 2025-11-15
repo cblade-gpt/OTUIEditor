@@ -252,8 +252,7 @@ body {
     background: #2d3748;
     border: 1px solid var(--border-light);
     border-radius: var(--radius-md);
-    min-width: 80px;
-    min-height: 60px;
+    /* Removed min-width/min-height - OTUI styles will set exact sizes (even 1-3px for separators) */
     cursor: move;
     user-select: none;
     box-shadow: var(--shadow-md);
