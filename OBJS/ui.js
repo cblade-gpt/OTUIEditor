@@ -9,6 +9,70 @@ function selectWidget(widget) {
     const ind = document.getElementById('editingIndicator');
     if (ind) ind.style.display = widget ? 'block' : 'none';
     if (widget) document.getElementById('editingWidgetType').textContent = widget.dataset.type.replace('UI', '');
+    
+    // Show tooltip with widget properties
+    showWidgetTooltip(widget);
+}
+
+function showWidgetTooltip(widget) {
+    // Remove existing tooltip
+    const existingTooltip = document.getElementById('widgetTooltip');
+    if (existingTooltip) {
+        existingTooltip.remove();
+    }
+    
+    if (!widget) return;
+    
+    // Get widget properties
+    const type = widget.dataset.type || 'Unknown';
+    const width = widget.offsetWidth || 0;
+    const height = widget.offsetHeight || 0;
+    const color = widget.dataset.color || widget.style.color || 'default';
+    const bgColor = widget.dataset.background || widget.style.backgroundColor || 'default';
+    const opacity = widget.dataset.opacity || widget.style.opacity || '1.0';
+    const visible = widget.dataset.visible !== 'false' ? 'true' : 'false';
+    
+    // Create tooltip
+    const tooltip = document.createElement('div');
+    tooltip.id = 'widgetTooltip';
+    tooltip.className = 'widget-tooltip';
+    
+    // Build tooltip content
+    let tooltipContent = `<strong>${type.replace('UI', '')}</strong><br>`;
+    tooltipContent += `Size: ${width} × ${height}px<br>`;
+    if (color !== 'default' && color) tooltipContent += `Color: ${color}<br>`;
+    if (bgColor !== 'default' && bgColor) tooltipContent += `BG: ${bgColor}<br>`;
+    tooltipContent += `Opacity: ${opacity}<br>`;
+    tooltipContent += `Visible: ${visible}`;
+    
+    tooltip.innerHTML = tooltipContent;
+    document.body.appendChild(tooltip);
+    
+    // Position tooltip above widget
+    const rect = widget.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const scrollX = window.scrollX || window.pageXOffset;
+    const scrollY = window.scrollY || window.pageYOffset;
+    
+    // Position above widget, centered
+    tooltip.style.left = `${rect.left + scrollX + (rect.width / 2) - (tooltipRect.width / 2)}px`;
+    tooltip.style.top = `${rect.top + scrollY - tooltipRect.height - 10}px`;
+    
+    // Auto-hide after 3 seconds
+    setTimeout(() => {
+        if (tooltip.parentNode) {
+            tooltip.style.opacity = '0';
+            setTimeout(() => tooltip.remove(), 300);
+        }
+    }, 3000);
+}
+
+function hideWidgetTooltip() {
+    const tooltip = document.getElementById('widgetTooltip');
+    if (tooltip) {
+        tooltip.style.opacity = '0';
+        setTimeout(() => tooltip.remove(), 300);
+    }
 }
 
 function updateHierarchyTree() {

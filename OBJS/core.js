@@ -327,12 +327,16 @@ function createWidget(type) {
 
 function deleteWidget(widget) {
     if (!widget) return;
-    widget.remove();
-    if (selectedWidget === widget) {
-        selectWidget(null);
+    // Only delete the exact widget, never delete parent containers
+    // Ensure widget is actually in the DOM before removing
+    if (widget.parentNode) {
+        widget.remove();
+        if (selectedWidget === widget) {
+            selectWidget(null);
+        }
+        saveState();
+        updateAll();
     }
-    saveState();
-    updateAll();
 }
 
 function copyWidget(widget) {

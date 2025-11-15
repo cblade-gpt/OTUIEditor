@@ -195,11 +195,17 @@ window.initOTUIBuilder = function() {
             return;
         }
 
-        // Delete key
+        // Delete key - only delete the exact selected widget, not parent containers
         if (e.key === 'Delete' || e.key === 'Backspace') {
             if (selectedWidget) {
                 e.preventDefault();
-                deleteWidget(selectedWidget);
+                e.stopPropagation();
+                // Ensure we're deleting the exact selected widget, not a parent
+                const widgetToDelete = selectedWidget;
+                // Verify the widget still exists and is actually selected
+                if (widgetToDelete && widgetToDelete.classList.contains('selected')) {
+                    deleteWidget(widgetToDelete);
+                }
             }
         }
         
@@ -644,6 +650,22 @@ window.initOTUIBuilder = function() {
         };
     });
 
+    // Click on canvas to deselect widgets
+    const editorContent = document.getElementById('editorContent');
+    if (editorContent) {
+        editorContent.addEventListener('click', (e) => {
+            // Only deselect if clicking directly on the canvas (not on a widget)
+            if (e.target === editorContent || e.target.id === 'editorContent') {
+                if (typeof selectWidget === 'function') {
+                    selectWidget(null);
+                }
+                if (typeof hideWidgetTooltip === 'function') {
+                    hideWidgetTooltip();
+                }
+            }
+        });
+    }
+    
     saveState();
     updateAll();
     showToast('OTUI Builder v3.6.0 — READY!');
