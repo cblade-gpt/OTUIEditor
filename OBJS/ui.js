@@ -100,6 +100,13 @@ function updatePropertyEditor() {
                     contentEl.textContent = `Sprite ${e.target.value}`;
                 }
             }
+            // Reapply styles when properties change
+            if (window.OTUIStyleLoader && window.OTUIStyleLoader.applyOTUIStyleToWidget) {
+                const type = selectedWidget.dataset.type;
+                if (type) {
+                    window.OTUIStyleLoader.applyOTUIStyleToWidget(selectedWidget, type);
+                }
+            }
             updateAll();
         };
     });

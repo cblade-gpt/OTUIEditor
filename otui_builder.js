@@ -1,6 +1,7 @@
 const scripts = [
     'OBJS/utils.js',
     'OBJS/widgets.js',
+    'OBJS/styleloader.js',
     'OBJS/core.js',
     'OBJS/ui.js',
     'OBJS/history.js',

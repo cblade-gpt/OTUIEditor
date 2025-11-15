@@ -282,6 +282,197 @@ window.initOTUIBuilder = function() {
             showToast('Module exported successfully! Check browser console for debug info.');
         });
     });
+    
+    // Settings button
+    bind('settingsBtn', () => {
+        const modal = document.getElementById('settingsModal');
+        if (modal) {
+            const input = document.getElementById('clientDataPathInput');
+            if (input && window.OTUIStyleLoader) {
+                const currentPath = window.OTUIStyleLoader.getClientDataPath();
+                if (currentPath) {
+                    input.value = currentPath;
+                } else {
+                    input.value = 'D:\\Work Data\\dipSet\\OTAOTCV8Dev\\data';
+                }
+            }
+            modal.style.display = 'flex';
+        }
+    });
+    
+    // File input for loading .otui files
+    const otuiFilesInput = document.getElementById('otuiFilesInput');
+    if (otuiFilesInput) {
+        otuiFilesInput.onchange = async (e) => {
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+            
+            const status = document.getElementById('settingsStatus');
+            if (status) {
+                status.style.display = 'block';
+                status.style.background = '#3b82f6';
+                status.style.color = 'white';
+                status.textContent = `Loading ${files.length} style file(s)...`;
+            }
+            
+            if (window.OTUIStyleLoader && window.OTUIStyleLoader.loadOTUIFilesFromFiles) {
+                try {
+                    const loaded = await window.OTUIStyleLoader.loadOTUIFilesFromFiles(files);
+                    
+                    // Resolve inheritance after loading
+                    if (window.OTUIStyleLoader.resolveInheritance) {
+                        window.OTUIStyleLoader.resolveInheritance();
+                    }
+                    
+                    // Reapply styles to all existing widgets
+                    applyStylesToAllWidgets();
+                    
+                    if (status) {
+                        status.style.background = '#10b981';
+                        status.textContent = `✓ Loaded ${loaded.length} style file(s)! Now load images in Step 2.`;
+                    }
+                } catch (error) {
+                    if (status) {
+                        status.style.background = '#ef4444';
+                        status.textContent = `Error: ${error.message}`;
+                    }
+                    console.error('Error loading files:', error);
+                }
+            }
+        };
+    }
+    
+    // File input for loading images
+    const imagesFilesInput = document.getElementById('imagesFilesInput');
+    if (imagesFilesInput) {
+        imagesFilesInput.onchange = async (e) => {
+            const files = e.target.files;
+            if (!files || files.length === 0) return;
+            
+            const status = document.getElementById('settingsStatus');
+            if (status) {
+                status.style.display = 'block';
+                status.style.background = '#3b82f6';
+                status.style.color = 'white';
+                status.textContent = `Loading ${files.length} image(s)...`;
+            }
+            
+            if (window.OTUIStyleLoader && window.OTUIStyleLoader.loadImageFiles) {
+                try {
+                    const loaded = await window.OTUIStyleLoader.loadImageFiles(files);
+                    
+                    // Reapply styles to all widgets (now with images available)
+                    applyStylesToAllWidgets();
+                    
+                    if (status) {
+                        status.style.background = '#10b981';
+                        status.textContent = `✓ Loaded ${loaded.length} image(s)! Styles and images applied to widgets.`;
+                    }
+                } catch (error) {
+                    if (status) {
+                        status.style.background = '#ef4444';
+                        status.textContent = `Error: ${error.message}`;
+                    }
+                    console.error('Error loading images:', error);
+                }
+            }
+        };
+    }
+    
+    // Helper function to apply styles to all widgets
+    function applyStylesToAllWidgets() {
+        const widgets = document.querySelectorAll('.widget');
+        let appliedCount = 0;
+        
+        widgets.forEach(widget => {
+            const type = widget.dataset.type;
+            if (type && window.OTUIStyleLoader && window.OTUIStyleLoader.applyOTUIStyleToWidget) {
+                if (window.OTUIStyleLoader.applyOTUIStyleToWidget(widget, type)) {
+                    appliedCount++;
+                }
+            }
+        });
+        
+        updateAll();
+        return appliedCount;
+    }
+    
+    // Save settings button (for folder path method)
+    const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+    if (saveSettingsBtn) {
+        saveSettingsBtn.onclick = async () => {
+            const input = document.getElementById('clientDataPathInput');
+            const status = document.getElementById('settingsStatus');
+            if (!input || !status) return;
+            
+            const path = input.value.trim();
+            if (!path) {
+                status.style.display = 'block';
+                status.style.background = '#ef4444';
+                status.style.color = 'white';
+                status.textContent = 'Please enter a valid path';
+                return;
+            }
+            
+            if (window.OTUIStyleLoader) {
+                try {
+                    window.OTUIStyleLoader.setClientDataPath(path);
+                    status.style.display = 'block';
+                    status.style.background = '#10b981';
+                    status.style.color = 'white';
+                    status.textContent = 'Loading styles...';
+                    
+                    await window.OTUIStyleLoader.loadAllStyles();
+                    
+                    status.style.background = '#10b981';
+                    status.textContent = 'Styles loaded successfully! Reloading widgets...';
+                    
+                    // Reapply styles to all existing widgets immediately
+                    const widgets = document.querySelectorAll('.widget');
+                    let appliedCount = 0;
+                    console.log(`Attempting to apply styles to ${widgets.length} widget(s)...`);
+                    
+                    widgets.forEach(widget => {
+                        const type = widget.dataset.type;
+                        if (type) {
+                            console.log(`Applying styles to widget: ${type}`);
+                            if (window.OTUIStyleLoader && window.OTUIStyleLoader.applyOTUIStyleToWidget) {
+                                if (window.OTUIStyleLoader.applyOTUIStyleToWidget(widget, type)) {
+                                    appliedCount++;
+                                    console.log(`✓ Successfully applied styles to ${type}`);
+                                } else {
+                                    console.warn(`✗ Failed to apply styles to ${type}`);
+                                }
+                            }
+                        }
+                    });
+                    
+                    updateAll();
+                    if (appliedCount > 0) {
+                        status.textContent = `Styles applied to ${appliedCount} widget(s)! Widgets now match client appearance.`;
+                    } else {
+                        status.style.background = '#f59e0b';
+                        status.textContent = `No styles applied. Try using the file input above to select .otui files directly.`;
+                    }
+                } catch (error) {
+                    status.style.background = '#ef4444';
+                    status.textContent = `Error: ${error.message}`;
+                    console.error('Error loading styles:', error);
+                }
+            }
+        };
+    }
+    
+    // Load saved path on startup
+    if (window.OTUIStyleLoader) {
+        const savedPath = window.OTUIStyleLoader.getClientDataPath();
+        if (savedPath) {
+            console.log('Loading styles from:', savedPath);
+            window.OTUIStyleLoader.loadAllStyles().then(() => {
+                console.log('Styles loaded on startup');
+            });
+        }
+    }
 
     // Close modals
     document.querySelectorAll('.modal').forEach(modal => {

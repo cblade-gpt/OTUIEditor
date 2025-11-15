@@ -67,7 +67,15 @@ function updatePreview() {
         }
         
         // Apply OTCv8 styling (this will set position, etc.)
-        applyOTCV8Styles(widget, type);
+        // Try to use loaded OTUI styles first
+        let stylesApplied = false;
+        if (window.OTUIStyleLoader && window.OTUIStyleLoader.applyOTUIStyleToWidget) {
+            stylesApplied = window.OTUIStyleLoader.applyOTUIStyleToWidget(widget, type);
+        }
+        // Only apply hardcoded styles as fallback if no loaded styles were found
+        if (!stylesApplied) {
+            applyOTCV8Styles(widget, type);
+        }
         
         // Ensure size is preserved after styling
         widget.style.width = originalWidth + 'px';

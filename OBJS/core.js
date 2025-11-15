@@ -247,6 +247,27 @@ function createWidget(type) {
         h.onmousedown = e => { e.stopPropagation(); startResize(widget, h.className.split(' ')[1], e); };
     });
 
+    // Apply OTUI styles immediately after widget is fully created
+    // This ensures ALL widgets (buttons, labels, panels, windows, etc.) use the correct images and styling from OTUI files
+    // This makes the editor visually match the actual client appearance
+    if (window.OTUIStyleLoader && window.OTUIStyleLoader.applyOTUIStyleToWidget) {
+        // Apply styles immediately - widgets should look like they do in the client
+        const applied = window.OTUIStyleLoader.applyOTUIStyleToWidget(widget, type);
+        if (applied) {
+            // Styles were applied successfully
+            // Update content if needed
+            const contentEl = widget.querySelector('.widget-content');
+            if (contentEl && widget.dataset.text) {
+                contentEl.textContent = widget.dataset.text;
+            }
+            // Hide the builder label overlay for a cleaner look (optional)
+            const labelEl = widget.querySelector('.widget-label');
+            if (labelEl) {
+                labelEl.style.opacity = '0.3'; // Make it subtle but still visible
+            }
+        }
+    }
+
     return widget;
 }
 

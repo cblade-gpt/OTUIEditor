@@ -18,6 +18,7 @@
         <header class="app-header">
             <div class="header-left"><div class="logo"><span class="logo-icon">OTUI</span><span>Builder v3.5.7</span></div></div>
             <div class="header-right">
+                <button class="btn btn-secondary" id="settingsBtn" title="Settings">⚙ Settings</button>
                 <button class="btn btn-secondary" id="newBtn">New</button>
                 <button class="btn btn-accent" id="exportBtn">Export Module</button>
             </div>
@@ -145,6 +146,32 @@
                     <pre id="luaCode" class="code-block language-lua" style="display: none;"><code></code></pre>
                     <pre id="otmodCode" class="code-block language-otmod" style="display: none;"><code></code></pre>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <button class="modal-close" aria-label="Close">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label style="font-weight: 600; margin-bottom: 8px; display: block;">Step 1: Load .otui Style Files</label>
+                    <input type="file" id="otuiFilesInput" multiple accept=".otui" style="width: 100%; padding: 8px; margin-top: 4px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: 4px; cursor: pointer;">
+                    <small style="color: #94a3b8; display: block; margin-top: 6px;">
+                        Select all .otui files from your <code>data/styles</code> folder (Ctrl+A or Ctrl+Click to select multiple).
+                    </small>
+                </div>
+                <div class="form-group" style="margin-top: 20px;">
+                    <label style="font-weight: 600; margin-bottom: 8px; display: block;">Step 2: Load Images Folder</label>
+                    <input type="file" id="imagesFilesInput" multiple accept="image/*" webkitdirectory directory style="width: 100%; padding: 8px; margin-top: 4px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: 4px; cursor: pointer;">
+                    <small style="color: #94a3b8; display: block; margin-top: 6px;">
+                        Select your <code>data/images</code> folder (or all image files). This ensures UI objects display correctly with images.
+                    </small>
+                </div>
+                <div id="settingsStatus" style="margin-top: 10px; padding: 8px; border-radius: 4px; display: none;"></div>
             </div>
         </div>
     </div>

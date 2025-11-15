@@ -248,6 +248,7 @@ body {
 /* WIDGETS */
 .widget {
     position: absolute;
+    /* Default styles - will be overridden by OTUI styles when loaded */
     background: #2d3748;
     border: 1px solid var(--border-light);
     border-radius: var(--radius-md);
@@ -259,6 +260,8 @@ body {
     overflow: hidden;
     z-index: 10;
     transition: all 0.15s ease;
+    /* Ensure OTUI styles can override */
+    box-sizing: border-box;
 }
 
 .widget:hover {
@@ -267,7 +270,9 @@ body {
 }
 
 .widget.selected {
-    border: 2px solid var(--primary);
+    /* Selection indicator - use outline to not interfere with OTUI borders */
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
     box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.4);
     z-index: 30;
 }
@@ -296,14 +301,19 @@ body {
     color: var(--text-secondary);
     pointer-events: none;
     z-index: 5;
+    /* Make label less intrusive when OTUI styles are applied */
+    opacity: 0.4;
+    transition: opacity 0.2s;
 }
 
 .widget:hover .widget-label {
     background: var(--primary);
     color: white;
+    opacity: 1;
 }
 
 .widget-content {
+    /* Default styles - will be overridden by OTUI styles */
     padding: 12px;
     color: white;
     font-size: 13px;
@@ -313,6 +323,8 @@ body {
     align-items: center;
     justify-content: center;
     overflow: hidden;
+    /* Ensure OTUI styles can override */
+    box-sizing: border-box;
 }
 
 /* RESIZE HANDLES */
