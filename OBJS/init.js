@@ -164,7 +164,7 @@ window.initOTUIBuilder = function() {
         setupCodeTabs(codeModal);
     }
     
-    console.log('OTUI Builder v3.6 Alpha — INITIALIZING...');
+    console.log('OTUI Builder v3.6.0 — INITIALIZING...');
 
     populateWidgetPalette();
     
@@ -641,7 +641,7 @@ window.initOTUIBuilder = function() {
 
     saveState();
     updateAll();
-    showToast('OTUI Builder v3.6 Alpha — READY!');
-    console.log('OTUI Builder v3.6 Alpha — READY!');
+    showToast('OTUI Builder v3.6.0 — READY!');
+    console.log('OTUI Builder v3.6.0 — READY!');
     console.log('Keyboard shortcuts: Ctrl+Z (undo), Ctrl+Y/Ctrl+Shift+Z (redo), Del/Backspace (delete), Ctrl+C (copy), Ctrl+V (paste), Ctrl+D (duplicate)');
 };
