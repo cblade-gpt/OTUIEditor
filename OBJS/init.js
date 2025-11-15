@@ -50,11 +50,33 @@ function handleDrop(e) {
 function populateWidgetPalette() {
     const palette = document.getElementById('widgetPalette');
     if (!palette) return;
+    
+    // Store original widget data for filtering
+    if (!window._allWidgets) {
+        window._allWidgets = Object.keys(OTUI_WIDGETS).map(type => ({
+            type,
+            def: OTUI_WIDGETS[type],
+            displayName: type.replace('UI', '')
+        }));
+    }
+    
+    // Get search term
+    const searchInput = document.getElementById('widgetSearch');
+    const searchTerm = searchInput ? searchInput.value.toLowerCase().trim() : '';
+    
+    // Filter widgets based on search
+    const filteredWidgets = searchTerm 
+        ? window._allWidgets.filter(w => 
+            w.displayName.toLowerCase().includes(searchTerm) || 
+            w.type.toLowerCase().includes(searchTerm) ||
+            w.def.category.toLowerCase().includes(searchTerm)
+          )
+        : window._allWidgets;
+    
     palette.innerHTML = '';
 
     const categories = {};
-    Object.keys(OTUI_WIDGETS).forEach(type => {
-        const def = OTUI_WIDGETS[type];
+    filteredWidgets.forEach(({type, def, displayName}) => {
         if (!categories[def.category]) {
             categories[def.category] = [];
             const cat = document.createElement('div');
@@ -63,14 +85,29 @@ function populateWidgetPalette() {
             cat.querySelector('.widget-category-header').onclick = () => cat.classList.toggle('collapsed');
             palette.appendChild(cat);
         }
-        const list = palette.querySelectorAll('.widget-list')[Object.keys(categories).length - 1];
-        const item = document.createElement('div');
-        item.className = 'widget-item';
-        item.textContent = type.replace('UI', '');
-        item.draggable = true;
-        item.ondragstart = e => e.dataTransfer.setData('text/plain', type);
-        list.appendChild(item);
+        // Find the category's list
+        const categoryLists = Array.from(palette.querySelectorAll('.widget-list'));
+        const categoryIndex = Object.keys(categories).indexOf(def.category);
+        const list = categoryLists[categoryIndex];
+        if (list) {
+            const item = document.createElement('div');
+            item.className = 'widget-item';
+            item.textContent = displayName;
+            item.draggable = true;
+            item.ondragstart = e => e.dataTransfer.setData('text/plain', type);
+            list.appendChild(item);
+        }
     });
+    
+    // If no results, show message
+    if (filteredWidgets.length === 0 && searchTerm) {
+        const noResults = document.createElement('div');
+        noResults.style.padding = '1rem';
+        noResults.style.textAlign = 'center';
+        noResults.style.color = 'var(--text-secondary)';
+        noResults.textContent = 'No widgets found';
+        palette.appendChild(noResults);
+    }
 }
 
 // SAFE BINDING FUNCTION
@@ -130,6 +167,14 @@ window.initOTUIBuilder = function() {
     console.log('OTUI Builder v3.5.7 — INITIALIZING...');
 
     populateWidgetPalette();
+    
+    // Widget search functionality
+    const widgetSearch = document.getElementById('widgetSearch');
+    if (widgetSearch) {
+        widgetSearch.addEventListener('input', () => {
+            populateWidgetPalette();
+        });
+    }
 
     const content = document.getElementById('editorContent');
     if (content) {
@@ -474,6 +519,8 @@ window.initOTUIBuilder = function() {
         
         if (addedCount > 0) {
             console.log(`Discovered ${addedCount} new widget(s) from styles, updating palette...`);
+            // Clear cached widgets so search includes new ones
+            window._allWidgets = null;
             populateWidgetPalette();
         }
     }

@@ -252,20 +252,27 @@ function createWidget(type) {
     // This makes the editor visually match the actual client appearance
     if (window.OTUIStyleLoader && window.OTUIStyleLoader.applyOTUIStyleToWidget) {
         // Apply styles immediately - widgets should look like they do in the client
-        const applied = window.OTUIStyleLoader.applyOTUIStyleToWidget(widget, type);
-        if (applied) {
-            // Styles were applied successfully
-            // Update content if needed
-            const contentEl = widget.querySelector('.widget-content');
-            if (contentEl && widget.dataset.text) {
-                contentEl.textContent = widget.dataset.text;
+        // Use requestAnimationFrame to ensure DOM is ready, especially for widgets with image-clip
+        requestAnimationFrame(() => {
+            const applied = window.OTUIStyleLoader.applyOTUIStyleToWidget(widget, type);
+            if (applied) {
+                // Styles were applied successfully
+                // Update content if needed
+                const contentEl = widget.querySelector('.widget-content');
+                if (contentEl && widget.dataset.text) {
+                    contentEl.textContent = widget.dataset.text;
+                }
+                // Hide the builder label overlay for a cleaner look (optional)
+                const labelEl = widget.querySelector('.widget-label');
+                if (labelEl) {
+                    labelEl.style.opacity = '0.3'; // Make it subtle but still visible
+                }
+                
+                // Force a reflow to ensure styles are applied, especially for clipped widgets
+                // This ensures separators, checkboxes, comboboxes get their correct size immediately
+                void widget.offsetHeight;
             }
-            // Hide the builder label overlay for a cleaner look (optional)
-            const labelEl = widget.querySelector('.widget-label');
-            if (labelEl) {
-                labelEl.style.opacity = '0.3'; // Make it subtle but still visible
-            }
-        }
+        });
     }
 
     return widget;
