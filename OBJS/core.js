@@ -161,15 +161,57 @@ function startResize(widget, dir, e) {
     const startW = widget.offsetWidth, startH = widget.offsetHeight;
     const startL = parseInt(widget.style.left) || 0;
     const startT = parseInt(widget.style.top) || 0;
+    
+    // Check if this is a separator with locked dimensions
+    const widgetType = widget.dataset.type;
+    const isHorizontalSeparator = widgetType === 'UIHorizontalSeparator';
+    const isVerticalSeparator = widgetType === 'UIVerticalSeparator';
+    const isSeparator = isHorizontalSeparator || isVerticalSeparator;
+    
+    // Get locked dimensions from style (min/max constraints)
+    const lockedHeight = isHorizontalSeparator ? parseInt(widget.style.minHeight) || parseInt(widget.style.height) : null;
+    const lockedWidth = isVerticalSeparator ? parseInt(widget.style.minWidth) || parseInt(widget.style.width) : null;
 
     const move = e => {
         let w = startW, h = startH, l = startL, t = startT;
-        if (dir.includes('e')) w += (e.clientX - startX) / zoomLevel;
-        if (dir.includes('s')) h += (e.clientY - startY) / zoomLevel;
-        if (dir.includes('w')) { l += (e.clientX - startX) / zoomLevel; w -= (e.clientX - startX) / zoomLevel; }
-        if (dir.includes('n')) { t += (e.clientY - startY) / zoomLevel; h -= (e.clientY - startY) / zoomLevel; }
-        w = Math.max(40, snapToGrid ? Math.round(w / 20) * 20 : w);
-        h = Math.max(40, snapToGrid ? Math.round(h / 20) * 20 : h);
+        
+        // For separators, prevent resizing the locked dimension
+        if (isSeparator) {
+            if (isHorizontalSeparator) {
+                // HorizontalSeparator: only allow horizontal resizing (width), lock height
+                if (dir.includes('e')) w += (e.clientX - startX) / zoomLevel;
+                if (dir.includes('w')) { l += (e.clientX - startX) / zoomLevel; w -= (e.clientX - startX) / zoomLevel; }
+                // Ignore vertical resize (s/n) - height is locked
+                h = lockedHeight || startH; // Keep locked height
+            } else if (isVerticalSeparator) {
+                // VerticalSeparator: only allow vertical resizing (height), lock width
+                if (dir.includes('s')) h += (e.clientY - startY) / zoomLevel;
+                if (dir.includes('n')) { t += (e.clientY - startY) / zoomLevel; h -= (e.clientY - startY) / zoomLevel; }
+                // Ignore horizontal resize (e/w) - width is locked
+                w = lockedWidth || startW; // Keep locked width
+            }
+        } else {
+            // Regular widgets: allow resizing in all directions
+            if (dir.includes('e')) w += (e.clientX - startX) / zoomLevel;
+            if (dir.includes('s')) h += (e.clientY - startY) / zoomLevel;
+            if (dir.includes('w')) { l += (e.clientX - startX) / zoomLevel; w -= (e.clientX - startX) / zoomLevel; }
+            if (dir.includes('n')) { t += (e.clientY - startY) / zoomLevel; h -= (e.clientY - startY) / zoomLevel; }
+        }
+        
+        // Apply minimum sizes (but respect locked dimensions for separators)
+        // NO minimum size restrictions for regular widgets - allow free resizing (even 1px)
+        if (!isSeparator) {
+            w = snapToGrid ? Math.round(w / 20) * 20 : w;
+            h = snapToGrid ? Math.round(h / 20) * 20 : h;
+        } else {
+            // For separators, only enforce minimum on resizable dimension
+            if (isHorizontalSeparator) {
+                w = Math.max(20, snapToGrid ? Math.round(w / 20) * 20 : w);
+            } else if (isVerticalSeparator) {
+                h = Math.max(20, snapToGrid ? Math.round(h / 20) * 20 : h);
+            }
+        }
+        
         widget.style.width = w + 'px';
         widget.style.height = h + 'px';
         widget.style.left = l + 'px';
@@ -231,7 +273,6 @@ function createWidget(type) {
     }
 
     widget.innerHTML = `
-        <div class="widget-label">${type.replace('UI', '')}</div>
         <div class="widget-content">${displayContent}</div>
         ${['nw','n','ne','w','e','sw','s','se'].map(d => `<div class="resize-handle ${d}"></div>`).join('')}
     `;
@@ -262,12 +303,6 @@ function createWidget(type) {
                 if (contentEl && widget.dataset.text) {
                     contentEl.textContent = widget.dataset.text;
                 }
-                // Hide the builder label overlay for a cleaner look (optional)
-                const labelEl = widget.querySelector('.widget-label');
-                if (labelEl) {
-                    labelEl.style.opacity = '0.3'; // Make it subtle but still visible
-                }
-                
                 // Force a reflow to ensure styles are applied, especially for clipped widgets
                 // This ensures separators, checkboxes, comboboxes get their correct size immediately
                 void widget.offsetHeight;

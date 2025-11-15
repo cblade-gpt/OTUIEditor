@@ -490,7 +490,12 @@ window.initOTUIBuilder = function() {
             'Sprite': 'UISprite',
             'Separator': 'UISeparator',
             'HorizontalSeparator': 'UIHorizontalSeparator',
-            'VerticalSeparator': 'UIVerticalSeparator'
+            'VerticalSeparator': 'UIVerticalSeparator',
+            'HorizontalLayout': 'UIHorizontalLayout',
+            'VerticalLayout': 'UIVerticalLayout',
+            'TabBar': 'UITabBar',
+            'GridLayout': 'UIGridLayout',
+            'CleanStaticMainWindow': 'CleanStaticMainWindow'
         };
         
         let addedCount = 0;
@@ -503,11 +508,22 @@ window.initOTUIBuilder = function() {
                 // Try to infer category and properties from style
                 const style = styles[styleName];
                 const isContainer = styleName.includes('Panel') || styleName.includes('Window') || 
-                                   styleName.includes('Area') || styleName.includes('Layout');
+                                   styleName.includes('Area') || styleName.includes('Layout') ||
+                                   styleName.includes('TabBar') || styleName.includes('MainWindow');
+                
+                // Determine category
+                let category = "Display";
+                if (isContainer) {
+                    category = "Layout";
+                } else if (styleName.includes('Button') || styleName.includes('CheckBox') || styleName.includes('TextEdit')) {
+                    category = "Controls";
+                } else if (styleName.includes('Item') || styleName.includes('Health') || styleName.includes('Mana')) {
+                    category = "Game UI";
+                }
                 
                 // Add to OTUI_WIDGETS dynamically
                 OTUI_WIDGETS[widgetType] = {
-                    category: isContainer ? "Layout" : "Display",
+                    category: category,
                     isContainer: isContainer,
                     props: {},
                     events: {}

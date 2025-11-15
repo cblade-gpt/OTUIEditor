@@ -292,7 +292,7 @@ body {
     position: absolute;
     top: -22px;
     left: 0;
-    font-size: 0.7rem;
+    font-size: 0.525rem; /* 25% smaller than 0.7rem */
     background: var(--bg-secondary);
     padding: 2px 8px;
     border-radius: var(--radius-sm);
@@ -315,7 +315,7 @@ body {
     /* Default styles - will be overridden by OTUI styles */
     padding: 12px;
     color: white;
-    font-size: 13px;
+    font-size: 9.75px; /* 25% smaller than 13px */
     text-align: center;
     height: 100%;
     display: flex;

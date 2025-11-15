@@ -53,7 +53,12 @@ function generateOTUICode() {
             code += `${indent}  !text: tr('${widget.dataset.text}')\n`;
         }
 
-        // Generate properties with proper formatting
+        // Common OTUI styling properties that should be included in code generation
+        // Note: margins are handled by calculateAnchors (visual positioning)
+        const commonProperties = ['visible', 'enabled', 'focusable', 'opacity', 'color', 'background',
+            'font', 'text-align', 'text-offset-x', 'text-offset-y', 'image-source', 'image-color'];
+        
+        // Generate widget-specific properties
         if (def.props) {
             Object.entries(def.props).forEach(([k, v]) => {
             const val = widget.dataset[k];
@@ -62,8 +67,13 @@ function generateOTUICode() {
             // Use widget value if set, otherwise use default, but skip if both are empty/undefined
             let finalValue = val !== undefined && val !== null && val !== '' ? val : defaultValue;
             
-            // Skip if value is still empty/undefined
+            // Skip if value is still empty/undefined or matches default
             if (finalValue === undefined || finalValue === null || finalValue === '') {
+                return;
+            }
+            
+            // Skip if value matches default (don't include unnecessary properties)
+            if (finalValue === defaultValue && (defaultValue === '' || defaultValue === 0 || defaultValue === false)) {
                 return;
             }
             
@@ -82,14 +92,86 @@ function generateOTUICode() {
                 code += `${indent}  ${k}: ${formattedValue}\n`;
             });
         }
+        
+        // Generate common properties if they differ from defaults
+        let textOffsetHandled = false; // Track if text-offset was already output
+        commonProperties.forEach(k => {
+            // Skip text-offset-x/y if we've already handled text-offset
+            if (textOffsetHandled && (k === 'text-offset-x' || k === 'text-offset-y')) {
+                return;
+            }
+            
+            const val = widget.dataset[k];
+            // For image-source, text-align, image-color - check even if empty (might be explicitly set)
+            const isSpecialProperty = (k === 'image-source' || k === 'text-align' || k === 'image-color');
+            
+            if (val !== undefined && val !== null && (val !== '' || isSpecialProperty)) {
+                // Check if it's different from default
+                let shouldInclude = true;
+                const defaultValues = {
+                    'visible': 'true',
+                    'enabled': 'true',
+                    'focusable': 'false',
+                    'opacity': '1',
+                    'color': '',
+                    'background': '',
+                    'font': '',
+                    'text-align': '',
+                    'text-offset-x': '0',
+                    'text-offset-y': '0',
+                    'image-source': '',
+                    'image-color': ''
+                };
+                
+                // For image-source, text-align, image-color - always include if they have a non-empty value
+                if (isSpecialProperty && val && val !== '') {
+                    shouldInclude = true;
+                } else if (!isSpecialProperty && (val === defaultValues[k] || val === '')) {
+                    shouldInclude = false;
+                } else if (isSpecialProperty && val === '') {
+                    // Don't include if explicitly empty
+                    shouldInclude = false;
+                }
+                
+                if (shouldInclude) {
+                    let formattedValue;
+                    let propertyName = k;
+                    
+                    // Handle text-offset (combine x and y)
+                    if (k === 'text-offset-x' || k === 'text-offset-y') {
+                        const offsetX = widget.dataset['text-offset-x'] || '0';
+                        const offsetY = widget.dataset['text-offset-y'] || '0';
+                        // Always output text-offset if either value is set (even if 0, user might have explicitly set it)
+                        // But check if at least one is non-zero or both are explicitly set
+                        const xSet = widget.dataset['text-offset-x'] !== undefined;
+                        const ySet = widget.dataset['text-offset-y'] !== undefined;
+                        if (xSet || ySet || offsetX !== '0' || offsetY !== '0') {
+                            propertyName = 'text-offset';
+                            formattedValue = `${offsetX} ${offsetY}`;
+                            code += `${indent}  ${propertyName}: ${formattedValue}\n`;
+                            textOffsetHandled = true; // Mark as handled
+                        }
+                        return; // Skip individual x/y output
+                    }
+                    
+                    if (k === 'visible' || k === 'enabled' || k === 'focusable') {
+                        formattedValue = (val === 'true' || val === true) ? 'true' : 'false';
+                    } else if (k === 'opacity') {
+                        formattedValue = val; // Number
+                    } else {
+                        // For image-source and other strings, use as-is
+                        formattedValue = val;
+                    }
+                    code += `${indent}  ${propertyName}: ${formattedValue}\n`;
+                }
+            }
+        });
 
-        // Size property - only include for root widget
-        // Child widgets typically don't need size when using anchors (which most do)
-        // In OTCv8 examples, size is often omitted for child widgets
-        if (isRoot) {
-            // Root widget should have size
-            code += `${indent}  size: ${widget.offsetWidth || 400} ${widget.offsetHeight || 300}\n`;
-        }
+        // Size property - include for all widgets (width and height)
+        // Always include size property for proper widget dimensions
+        const widgetWidth = widget.offsetWidth || parseInt(widget.style.width) || 400;
+        const widgetHeight = widget.offsetHeight || parseInt(widget.style.height) || 300;
+        code += `${indent}  size: ${widgetWidth} ${widgetHeight}\n`;
 
         if (!isRoot) {
             const anchorInfo = calculateAnchors(widget);

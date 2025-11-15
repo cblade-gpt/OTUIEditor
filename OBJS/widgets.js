@@ -2,6 +2,7 @@
 const OTUI_WIDGETS = {
     // ========== LAYOUT WIDGETS ==========
     UIWindow: { category: "Layout", isContainer: true, props: { title: "My Window", draggable: true, closable: true }, events: { onClose: 'function()' } },
+    CleanStaticMainWindow: { category: "Layout", isContainer: true, props: { title: "Main Window" }, events: { onClose: 'function()' } },
     UIPanel: { category: "Layout", isContainer: true, props: { color: "alpha", opacity: 0.9 }, events: {} },
     UIWidget: { category: "Layout", isContainer: true, props: { }, events: {} },
     UIHorizontalSeparator: { category: "Layout", isContainer: false, props: { color: "#666" }, events: {} },

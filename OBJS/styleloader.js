@@ -514,7 +514,12 @@ function getStyleForWidget(widgetType) {
         'UIComboBox': 'ComboBox',
         'UIHorizontalSeparator': 'HorizontalSeparator',
         'UIVerticalSeparator': 'VerticalSeparator',
-        'UISeparator': 'Separator'
+        'UISeparator': 'Separator',
+        'UIHorizontalLayout': 'HorizontalLayout',
+        'UIVerticalLayout': 'VerticalLayout',
+        'UITabBar': 'TabBar',
+        'UIGridLayout': 'GridLayout',
+        'CleanStaticMainWindow': 'CleanStaticMainWindow'
     };
     
     // Get the style name for this widget type
@@ -661,6 +666,10 @@ function convertOTUIPropertyToCSS(key, value, dataPath) {
             // Image clip is handled separately for sprite sheets
             return null;
         
+        case 'image-rect':
+            // Image rect is handled separately (similar to image-clip)
+            return null;
+        
         case 'image-color':
             // Image color tinting (would need canvas manipulation)
             return null;
@@ -736,42 +745,56 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     // Remove default builder styles that might interfere
     widget.style.borderRadius = '0'; // OTUI widgets typically don't use border-radius
     
-    // Check for image-clip FIRST (even without image-source) to enforce size
-    // This applies to ALL widgets with image-clip, regardless of whether image is loaded
+    // Check for image-clip and image-rect FIRST (even without image-source) to enforce size
+    // This applies to ALL widgets with image-clip/image-rect, regardless of whether image is loaded
     // IMPORTANT: Check state-specific style FIRST, then base style
     // Checkboxes may have different clips for $checked vs $unchecked states
-    // We need to check states BEFORE merging because state image-clip should take precedence
+    // We need to check states BEFORE merging because state image-clip/image-rect should take precedence
+    // image-rect works the same as image-clip: x y width height
     let imageClip = null;
+    let imageRect = null;
     
-    // Check state-specific image-clip FIRST (before merging)
+    // Check state-specific image-clip/image-rect FIRST (before merging)
     if (fullStyle && fullStyle.states) {
         const isChecked = widget.dataset.checked === 'true' || widget.classList.contains('checked');
         // Check resolved state first (already merged with base)
-        if (isChecked && fullStyle.states.checked && fullStyle.states.checked['image-clip']) {
-            imageClip = fullStyle.states.checked['image-clip'];
-        } else if (!isChecked && fullStyle.states.unchecked && fullStyle.states.unchecked['image-clip']) {
-            imageClip = fullStyle.states.unchecked['image-clip'];
+        if (isChecked && fullStyle.states.checked) {
+            imageClip = fullStyle.states.checked['image-clip'] || imageClip;
+            imageRect = fullStyle.states.checked['image-rect'] || imageRect;
+        } else if (!isChecked && fullStyle.states.unchecked) {
+            imageClip = fullStyle.states.unchecked['image-clip'] || imageClip;
+            imageRect = fullStyle.states.unchecked['image-rect'] || imageRect;
         }
         // Also check original state properties if still not found (before resolution)
-        if (!imageClip && fullStyle.originalStates) {
-            if (isChecked && fullStyle.originalStates.checked && fullStyle.originalStates.checked['image-clip']) {
-                imageClip = fullStyle.originalStates.checked['image-clip'];
-            } else if (!isChecked && fullStyle.originalStates.unchecked && fullStyle.originalStates.unchecked['image-clip']) {
-                imageClip = fullStyle.originalStates.unchecked['image-clip'];
+        if ((!imageClip && !imageRect) && fullStyle.originalStates) {
+            if (isChecked && fullStyle.originalStates.checked) {
+                imageClip = fullStyle.originalStates.checked['image-clip'] || imageClip;
+                imageRect = fullStyle.originalStates.checked['image-rect'] || imageRect;
+            } else if (!isChecked && fullStyle.originalStates.unchecked) {
+                imageClip = fullStyle.originalStates.unchecked['image-clip'] || imageClip;
+                imageRect = fullStyle.originalStates.unchecked['image-rect'] || imageRect;
             }
         }
     }
     
-    // If no state clip found, check merged style (base style)
+    // If no state clip/rect found, check merged style (base style)
     if (!imageClip) {
         imageClip = style['image-clip'];
     }
+    if (!imageRect) {
+        imageRect = style['image-rect'];
+    }
+    
+    // image-rect takes precedence over image-clip if both are present
+    // Use image-rect if available, otherwise use image-clip
+    const finalImageClip = imageRect || imageClip;
     
     let clipX = 0, clipY = 0, clipW = null, clipH = null;
     let hasClip = false;
     
-    if (imageClip) {
-        const clipParts = imageClip.trim().split(/\s+/);
+    // Process image-clip or image-rect (both use same format: x y width height)
+    if (finalImageClip) {
+        const clipParts = finalImageClip.trim().split(/\s+/);
         if (clipParts.length >= 4) {
             clipX = parseInt(clipParts[0] || '0', 10);
             clipY = parseInt(clipParts[1] || '0', 10);
@@ -805,8 +828,10 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     }
     
     // Handle image-source with border (9-slice scaling) - do this first as it affects borders
-    if (style['image-source']) {
-        let imagePath = style['image-source'].replace(/^\//, '');
+    // Check for custom image-source from dataset first (user-set property), then style
+    let imageSource = widget.dataset['image-source'] || style['image-source'];
+    if (imageSource) {
+        let imagePath = imageSource.replace(/^\//, '');
         
         // Get image URL from cache (works with HTTP/HTTPS)
         let imageUrl = getImageUrl(imagePath);
@@ -988,7 +1013,9 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     }
     
     // Handle background color (if no image or image failed to load)
-    if (!style['image-source'] || !dataPath) {
+    // Check both dataset and style for image-source
+    const hasImageSource = widget.dataset['image-source'] || style['image-source'];
+    if (!hasImageSource || !dataPath) {
         if (style.background) {
             widget.style.backgroundColor = style.background;
         }
@@ -1020,12 +1047,27 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     if (marginLeft !== undefined) widget.style.marginLeft = `${marginLeft}px`;
     if (marginRight !== undefined) widget.style.marginRight = `${marginRight}px`;
     
-    // Handle font
-    if (style.font) {
+    // Handle font (check dataset first for custom values)
+    const fontValue = widget.dataset['font'] || style.font;
+    if (fontValue) {
         widget.style.fontFamily = '"Tahoma", "Arial", sans-serif';
-        const fontSizeMatch = style.font.match(/(\d+)px/);
+        const fontSizeMatch = fontValue.match(/(\d+)px/);
         if (fontSizeMatch) {
-            widget.style.fontSize = fontSizeMatch[1] + 'px';
+            // Make font size 25% smaller
+            const originalSize = parseInt(fontSizeMatch[1], 10);
+            const smallerSize = Math.round(originalSize * 0.75);
+            widget.style.fontSize = smallerSize + 'px';
+        }
+        // Apply full font string if provided
+        if (fontValue.includes('px')) {
+            widget.style.font = fontValue;
+        }
+        const contentEl = widget.querySelector('.widget-content');
+        if (contentEl) {
+            if (fontSizeMatch) {
+                contentEl.style.fontSize = widget.style.fontSize;
+            }
+            contentEl.style.fontFamily = widget.style.fontFamily;
         }
     }
     
@@ -1038,12 +1080,13 @@ function applyOTUIStyleToWidget(widget, widgetType) {
         }
     }
     
-    // Handle text alignment
-    if (style['text-align']) {
-        widget.style.textAlign = style['text-align'];
+    // Handle text alignment (check dataset first for custom values)
+    const textAlign = widget.dataset['text-align'] || style['text-align'];
+    if (textAlign) {
+        widget.style.textAlign = textAlign;
         const contentEl = widget.querySelector('.widget-content');
         if (contentEl) {
-            const align = style['text-align'];
+            const align = textAlign;
             if (align === 'left' || align === 'topLeft') {
                 contentEl.style.justifyContent = 'flex-start';
             } else if (align === 'right' || align === 'topRight') {
@@ -1051,14 +1094,28 @@ function applyOTUIStyleToWidget(widget, widgetType) {
             } else {
                 contentEl.style.justifyContent = 'center';
             }
+            contentEl.style.textAlign = textAlign;
         }
     }
     
-    // Handle text-offset (adjusts text position)
-    if (style['text-offset']) {
-        const offsetParts = style['text-offset'].split(/\s+/);
-        const offsetX = parseInt(offsetParts[0] || '0');
-        const offsetY = parseInt(offsetParts[1] || '0');
+    // Handle text-offset (check dataset first for custom values)
+    // Check for text-offset-x/y in dataset, or text-offset in style
+    const textOffsetX = widget.dataset['text-offset-x'];
+    const textOffsetY = widget.dataset['text-offset-y'];
+    const textOffset = style['text-offset'];
+    
+    if (textOffsetX !== undefined || textOffsetY !== undefined || textOffset) {
+        let offsetX = 0, offsetY = 0;
+        if (textOffsetX !== undefined && textOffsetY !== undefined) {
+            // Use dataset values (from properties panel)
+            offsetX = parseInt(textOffsetX || '0', 10);
+            offsetY = parseInt(textOffsetY || '0', 10);
+        } else if (textOffset) {
+            // Use style value (from OTUI file)
+            const offsetParts = textOffset.split(/\s+/);
+            offsetX = parseInt(offsetParts[0] || '0', 10);
+            offsetY = parseInt(offsetParts[1] || '0', 10);
+        }
         const contentEl = widget.querySelector('.widget-content');
         if (contentEl) {
             contentEl.style.transform = `translate(${offsetX}px, ${offsetY}px)`;
@@ -1122,7 +1179,12 @@ function applyOTUIStyleToWidget(widget, widgetType) {
                     }
                 }
             } else {
-                // Regular widgets: apply size normally
+                // Regular widgets: apply size but allow FREE resizing (NO min-width/min-height)
+                widget.style.minWidth = '0';
+                widget.style.minHeight = '0';
+                widget.style.maxWidth = 'none';
+                widget.style.maxHeight = 'none';
+                
                 // Only set if widget doesn't have a preserved size (user hasn't resized it)
                 if (w && sizeW > 0 && (!preservedWidth || preservedWidth === '140px' || preservedWidth === 'auto' || preservedWidth === '')) {
                     widget.style.width = `${sizeW}px`;
@@ -1152,6 +1214,12 @@ function applyOTUIStyleToWidget(widget, widgetType) {
                     widget.style.height = preservedHeight;
                 }
             }
+        } else {
+            // Regular widgets: NO min-width/min-height restrictions - allow free resizing
+            widget.style.minWidth = '0';
+            widget.style.minHeight = '0';
+            widget.style.maxWidth = 'none';
+            widget.style.maxHeight = 'none';
         }
         
         // Restore preserved dimensions if they were custom (but not if clip size was applied)
@@ -1215,7 +1283,7 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     for (const [key, value] of Object.entries(style)) {
         // Skip properties we've already handled
         if (['image-source', 'image-border', 'image-border-top', 'image-border-bottom', 
-             'image-border-left', 'image-border-right', 'image-clip', 'image-color',
+             'image-border-left', 'image-border-right', 'image-clip', 'image-rect', 'image-color',
              'padding-top', 'padding-bottom', 'padding-left', 'padding-right', 
              'margin-top', 'margin-bottom', 'margin-left', 'margin-right', 
              'font', 'color', 'background', 'opacity', 'size', 'text-align', 'text-offset'].includes(key)) {
@@ -1237,22 +1305,58 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     // Final re-enforcement: If image-clip was applied, ensure size is correct
     // This must be at the end to override any size property that was applied
     // This ensures separators, checkboxes, and buttons with image-clip always use clip dimensions
+    // BUT: For separators, only enforce the constrained dimension from clip
     if (widget.dataset.clipSizeApplied === 'true') {
         const clipW = parseInt(widget.dataset.clipWidth || '0', 10);
         const clipH = parseInt(widget.dataset.clipHeight || '0', 10);
         if (clipW > 0 && clipH > 0) {
-            // Check if size was overridden - if so, reset to clip dimensions
-            const currentW = parseInt(widget.style.width) || 0;
-            const currentH = parseInt(widget.style.height) || 0;
-            // Only reset if it doesn't match clip AND user hasn't manually resized
-            if ((currentW !== clipW || currentH !== clipH) && 
-                (!preservedWidth || preservedWidth === '140px' || preservedWidth === 'auto' || preservedWidth === '')) {
-                widget.style.width = `${clipW}px`;
+            if (isSeparator) {
+                // For separators, only enforce the constrained dimension from clip
+                if (isHorizontalSeparator) {
+                    // HorizontalSeparator: enforce height from clip, allow width to be resized
+                    widget.style.height = `${clipH}px`;
+                    widget.style.minHeight = `${clipH}px`;
+                    widget.style.maxHeight = `${clipH}px`;
+                    // Width can be resized - only set if not preserved
+                    if (!preservedWidth || preservedWidth === '140px' || preservedWidth === 'auto' || preservedWidth === '') {
+                        widget.style.width = `${clipW}px`;
+                    }
+                } else if (isVerticalSeparator) {
+                    // VerticalSeparator: enforce width from clip, allow height to be resized
+                    widget.style.width = `${clipW}px`;
+                    widget.style.minWidth = `${clipW}px`;
+                    widget.style.maxWidth = `${clipW}px`;
+                    // Height can be resized - only set if not preserved
+                    if (!preservedHeight || preservedHeight === '90px' || preservedHeight === 'auto' || preservedHeight === '') {
+                        widget.style.height = `${clipH}px`;
+                    }
+                }
+            } else {
+                // Regular widgets: check if size was overridden - if so, reset to clip dimensions
+                const currentW = parseInt(widget.style.width) || 0;
+                const currentH = parseInt(widget.style.height) || 0;
+                // Only reset if it doesn't match clip AND user hasn't manually resized
+                if ((currentW !== clipW || currentH !== clipH) && 
+                    (!preservedWidth || preservedWidth === '140px' || preservedWidth === 'auto' || preservedWidth === '')) {
+                    widget.style.width = `${clipW}px`;
+                }
+                if ((currentW !== clipW || currentH !== clipH) && 
+                    (!preservedHeight || preservedHeight === '90px' || preservedHeight === 'auto' || preservedHeight === '')) {
+                    widget.style.height = `${clipH}px`;
+                }
             }
-            if ((currentW !== clipW || currentH !== clipH) && 
-                (!preservedHeight || preservedHeight === '90px' || preservedHeight === 'auto' || preservedHeight === '')) {
-                widget.style.height = `${clipH}px`;
-            }
+        }
+    } else if (isSeparator) {
+        // Final re-enforcement for separators without image-clip
+        // Ensure locked dimensions are maintained
+        if (isHorizontalSeparator) {
+            const lockedHeight = parseInt(widget.style.height) || 2;
+            widget.style.minHeight = `${lockedHeight}px`;
+            widget.style.maxHeight = `${lockedHeight}px`;
+        } else if (isVerticalSeparator) {
+            const lockedWidth = parseInt(widget.style.width) || 2;
+            widget.style.minWidth = `${lockedWidth}px`;
+            widget.style.maxWidth = `${lockedWidth}px`;
         }
     }
     
