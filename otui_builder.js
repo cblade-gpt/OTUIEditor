@@ -10,6 +10,7 @@ const scripts = [
     'OBJS/preview.js',
     'OBJS/ai-generator.js',
     'OBJS/otui-parser.js',
+    'OBJS/storage.js',
     'OBJS/init.js'
 ];
 

@@ -52,12 +52,15 @@ function populateWidgetPalette() {
     if (!palette) return;
     
     // Store original widget data for filtering
+    // Filter out import-only widgets (custom widgets with inheritance)
     if (!window._allWidgets) {
-        window._allWidgets = Object.keys(OTUI_WIDGETS).map(type => ({
-            type,
-            def: OTUI_WIDGETS[type],
-            displayName: type.replace('UI', '')
-        }));
+        window._allWidgets = Object.keys(OTUI_WIDGETS)
+            .filter(type => !OTUI_WIDGETS[type].importOnly) // Exclude import-only widgets
+            .map(type => ({
+                type,
+                def: OTUI_WIDGETS[type],
+                displayName: type.replace('UI', '')
+            }));
     }
     
     // Get search term
@@ -509,9 +512,18 @@ window.initOTUIBuilder = function() {
                     // Select first widget
                     selectWidget(createdWidgets[0]);
                     
+                    // Refresh widget palette to exclude any import-only widgets
+                    window._allWidgets = null;
+                    populateWidgetPalette();
+                    
                     // Save state
                     saveState();
                     updateAll();
+                    
+                    // Auto-save progress if cookies enabled
+                    if (window.OTUIStorage && window.OTUIStorage.hasCookieConsent()) {
+                        window.OTUIStorage.autoSaveProgress();
+                    }
                     
                     // Close AI modal
                     const aiModal = document.getElementById('aiGenerateModal');
@@ -943,9 +955,18 @@ window.initOTUIBuilder = function() {
                     // Select first widget
                     selectWidget(createdWidgets[0]);
                     
+                    // Refresh widget palette to exclude any import-only widgets
+                    window._allWidgets = null;
+                    populateWidgetPalette();
+                    
                     // Save state
                     saveState();
                     updateAll();
+                    
+                    // Auto-save progress if cookies enabled
+                    if (window.OTUIStorage && window.OTUIStorage.hasCookieConsent()) {
+                        window.OTUIStorage.autoSaveProgress();
+                    }
                     
                     showToast(`Successfully imported ${createdWidgets.length} widget(s) from ${file.name}!`);
                 } else {
@@ -1055,5 +1076,324 @@ window.initOTUIBuilder = function() {
                 localStorage.setItem('rightSidebarWidth', rightSidebar.offsetWidth);
             }
         });
+    }
+    
+    // ========== COOKIE STORAGE INTEGRATION ==========
+    
+    // Initialize cookie consent on page load
+    if (window.OTUIStorage) {
+        window.OTUIStorage.initCookieConsent();
+        
+        // Cookie consent buttons
+        const acceptCookiesBtn = document.getElementById('acceptCookiesBtn');
+        const declineCookiesBtn = document.getElementById('declineCookiesBtn');
+        
+        if (acceptCookiesBtn) {
+            acceptCookiesBtn.addEventListener('click', () => {
+                window.OTUIStorage.setCookieConsent(true);
+                const consentDialog = document.getElementById('cookieConsentDialog');
+                if (consentDialog) {
+                    consentDialog.style.display = 'none';
+                }
+                showToast('Cookies enabled! Your progress will be saved.');
+                
+                // If widget library modal was trying to open, open it now
+                const widgetLibraryModal = document.getElementById('widgetLibraryModal');
+                if (widgetLibraryModal && widgetLibraryModal.dataset.pendingOpen === 'true') {
+                    widgetLibraryModal.style.display = 'flex';
+                    widgetLibraryModal.dataset.pendingOpen = 'false';
+                    // Refresh templates list if function exists
+                    if (typeof refreshWidgetTemplatesList === 'function') {
+                        refreshWidgetTemplatesList();
+                    }
+                }
+                
+                // Check for saved progress
+                if (window.OTUIStorage.loadCanvasProgress()) {
+                    // Progress loaded
+                }
+            });
+        }
+        
+        if (declineCookiesBtn) {
+            declineCookiesBtn.addEventListener('click', () => {
+                window.OTUIStorage.setCookieConsent(false);
+                const consentDialog = document.getElementById('cookieConsentDialog');
+                if (consentDialog) {
+                    consentDialog.style.display = 'none';
+                }
+                showToast('Cookies disabled. Progress will not be saved.');
+            });
+        }
+        
+        // Check for saved progress on startup (if cookies are enabled)
+        if (window.OTUIStorage.hasCookieConsent()) {
+            // Auto-load progress is handled by user clicking "Restore" button
+            // We don't auto-load to avoid overwriting user's current work
+        }
+    }
+    
+    // ========== WIDGET LIBRARY ==========
+    
+    // Widget Library button
+    const widgetLibraryBtn = document.getElementById('widgetLibraryBtn');
+    const widgetLibraryModal = document.getElementById('widgetLibraryModal');
+    const saveWidgetBtn = document.getElementById('saveWidgetBtn');
+    const saveWidgetNameInput = document.getElementById('saveWidgetNameInput');
+    const widgetTemplatesList = document.getElementById('widgetTemplatesList');
+    
+    // Open widget library modal
+    if (widgetLibraryBtn && widgetLibraryModal) {
+        widgetLibraryBtn.addEventListener('click', () => {
+            if (!window.OTUIStorage) {
+                showToast('Storage system not available');
+                return;
+            }
+            
+            // Show cookie consent if not given yet
+            if (!window.OTUIStorage.hasCookieConsent()) {
+                const consentDialog = document.getElementById('cookieConsentDialog');
+                if (consentDialog) {
+                    // Mark that library modal should open after consent
+                    widgetLibraryModal.dataset.pendingOpen = 'true';
+                    consentDialog.style.display = 'flex';
+                    showToast('Please accept cookies to use the widget library');
+                } else {
+                    showToast('Please accept cookies to use the widget library');
+                }
+                return;
+            }
+            
+            widgetLibraryModal.style.display = 'flex';
+            refreshWidgetTemplatesList();
+        });
+    }
+    
+    // Save widget template
+    if (saveWidgetBtn && saveWidgetNameInput) {
+        saveWidgetBtn.addEventListener('click', () => {
+            if (!selectedWidget) {
+                showToast('Please select a widget to save');
+                return;
+            }
+            
+            const templateName = saveWidgetNameInput.value.trim();
+            if (!templateName) {
+                showToast('Please enter a template name');
+                return;
+            }
+            
+            if (!window.OTUIStorage) {
+                showToast('Storage system not available');
+                return;
+            }
+            
+            // Show cookie consent if not given yet
+            if (!window.OTUIStorage.hasCookieConsent()) {
+                const consentDialog = document.getElementById('cookieConsentDialog');
+                if (consentDialog) {
+                    consentDialog.style.display = 'flex';
+                    showToast('Please accept cookies to save templates');
+                } else {
+                    showToast('Please accept cookies to save templates');
+                }
+                return;
+            }
+            
+            if (window.OTUIStorage.saveWidgetTemplate(selectedWidget, templateName)) {
+                showToast(`Template "${templateName}" saved!`);
+                saveWidgetNameInput.value = '';
+                refreshWidgetTemplatesList();
+            }
+        });
+        
+        // Allow Enter key to save
+        saveWidgetNameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                saveWidgetBtn.click();
+            }
+        });
+    }
+    
+    // Refresh widget templates list
+    function refreshWidgetTemplatesList() {
+        if (!widgetTemplatesList || !window.OTUIStorage) return;
+        
+        const templates = window.OTUIStorage.getWidgetTemplates();
+        const templateKeys = Object.keys(templates);
+        
+        if (templateKeys.length === 0) {
+            widgetTemplatesList.innerHTML = `
+                <div class="no-templates" style="text-align: center; padding: 40px; color: #94a3b8;">
+                    <p>No saved templates yet.</p>
+                    <p style="font-size: 0.85rem; margin-top: 10px;">Select a widget and save it to create your first template!</p>
+                </div>
+            `;
+            return;
+        }
+        
+        widgetTemplatesList.innerHTML = templateKeys.map(name => {
+            const template = templates[name];
+            const savedDate = new Date(template.savedAt).toLocaleDateString();
+            const childCount = template.childCount || 0;
+            const isGroup = childCount > 0;
+            return `
+                <div class="template-item">
+                    <div class="template-item-info">
+                        <div class="template-item-name">${escapeHtml(name)}${isGroup ? ' <span style="color: var(--accent); font-size: 0.85rem;">(Widget Group)</span>' : ''}</div>
+                        <div class="template-item-meta">
+                            Type: ${escapeHtml(template.type)}${isGroup ? ` • ${childCount} child${childCount !== 1 ? 'ren' : ''}` : ''} • Saved: ${savedDate}
+                        </div>
+                    </div>
+                    <div class="template-item-actions">
+                        <button class="btn btn-accent" onclick="loadTemplate('${escapeHtml(name)}')">Load</button>
+                        <button class="btn btn-secondary" onclick="deleteTemplate('${escapeHtml(name)}')">Delete</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+    
+    // Load template function (global for onclick handlers)
+    window.loadTemplate = function(templateName) {
+        if (!window.OTUIStorage) return;
+        
+        const widget = window.OTUIStorage.loadWidgetTemplate(templateName);
+        if (!widget) return;
+        
+        // Add widget to canvas at current mouse position or center
+        const content = document.getElementById('editorContent');
+        if (!content) return;
+        
+        // Position widget in center of viewport
+        const viewportWidth = content.offsetWidth || 800;
+        const viewportHeight = content.offsetHeight || 600;
+        const widgetWidth = parseInt(widget.style.width) || 140;
+        const widgetHeight = parseInt(widget.style.height) || 90;
+        
+        widget.style.left = `${(viewportWidth / 2) - (widgetWidth / 2)}px`;
+        widget.style.top = `${(viewportHeight / 2) - (widgetHeight / 2)}px`;
+        
+        content.appendChild(widget);
+        selectWidget(widget);
+        
+        // Update all widgets after loading (ensures styles and handlers are applied)
+        updateAll();
+        
+        // Save state after template is loaded
+        saveState();
+        
+        // Auto-save progress
+        if (window.OTUIStorage) {
+            window.OTUIStorage.autoSaveProgress();
+        }
+        
+        const childCount = widget.querySelectorAll('.widget').length;
+        const message = childCount > 0 
+            ? `Template "${templateName}" loaded with ${childCount} child widget${childCount !== 1 ? 's' : ''}!`
+            : `Template "${templateName}" loaded!`;
+        showToast(message);
+    };
+    
+    // Delete template function (global for onclick handlers)
+    window.deleteTemplate = function(templateName) {
+        if (!confirm(`Delete template "${templateName}"?`)) return;
+        
+        if (window.OTUIStorage && window.OTUIStorage.deleteWidgetTemplate(templateName)) {
+            showToast(`Template "${templateName}" deleted`);
+            refreshWidgetTemplatesList();
+        }
+    };
+    
+    // Helper function to escape HTML
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // ========== AUTO-SAVE PROGRESS ==========
+    
+    // Auto-save progress when canvas changes
+    if (window.OTUIStorage && window.OTUIStorage.hasCookieConsent()) {
+        // Override saveState to also trigger auto-save
+        const originalSaveState = window.saveState;
+        if (originalSaveState) {
+            window.saveState = function() {
+                originalSaveState();
+                window.OTUIStorage.autoSaveProgress();
+            };
+        }
+        
+        // Also auto-save on widget creation, deletion, etc.
+        // This is already handled by saveState() calls throughout the code
+    }
+    
+    // Add "Restore Progress" option to New button
+    const newBtn = document.getElementById('newBtn');
+    if (newBtn) {
+        newBtn.addEventListener('click', () => {
+            if (window.OTUIStorage && window.OTUIStorage.hasCookieConsent()) {
+                // Check if there's saved progress
+                const progressJson = window.OTUIStorage.getCookie('otui_builder_canvas_progress');
+                if (progressJson) {
+                    if (confirm('Clear canvas? (Saved progress will still be available to restore)')) {
+                        const content = document.getElementById('editorContent');
+                        if (content) {
+                            content.innerHTML = '';
+                            selectWidget(null);
+                            saveState();
+                            updateAll();
+                            showToast('Canvas cleared');
+                        }
+                    }
+                } else {
+                    // No saved progress, just clear
+                    const content = document.getElementById('editorContent');
+                    if (content) {
+                        content.innerHTML = '';
+                        selectWidget(null);
+                        saveState();
+                        updateAll();
+                        showToast('Canvas cleared');
+                    }
+                }
+            } else {
+                // No cookies, just clear
+                const content = document.getElementById('editorContent');
+                if (content) {
+                    content.innerHTML = '';
+                    selectWidget(null);
+                    saveState();
+                    updateAll();
+                    showToast('Canvas cleared');
+                }
+            }
+        });
+    }
+    
+    // Add "Restore Progress" button to settings or as a separate button
+    // For now, we'll add it to the settings modal
+    const settingsModal = document.getElementById('settingsModal');
+    if (settingsModal && window.OTUIStorage) {
+        // Check if restore button already exists
+        let restoreBtn = document.getElementById('restoreProgressBtn');
+        if (!restoreBtn) {
+            const settingsBody = settingsModal.querySelector('.modal-body');
+            if (settingsBody) {
+                restoreBtn = document.createElement('button');
+                restoreBtn.id = 'restoreProgressBtn';
+                restoreBtn.className = 'btn btn-accent';
+                restoreBtn.textContent = '📥 Restore Saved Progress';
+                restoreBtn.style.width = '100%';
+                restoreBtn.style.marginTop = '20px';
+                restoreBtn.addEventListener('click', () => {
+                    if (window.OTUIStorage.loadCanvasProgress()) {
+                        // Progress loaded successfully
+                    }
+                });
+                settingsBody.appendChild(restoreBtn);
+            }
+        }
     }
 };

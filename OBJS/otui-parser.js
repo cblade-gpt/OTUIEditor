@@ -277,33 +277,71 @@ function parseOTUICode(code) {
         }
         
         // Check if this is a widget declaration (starts with capital letter, optionally with inheritance)
-        // Examples: "Window", "Button < UIButton", "Panel < FlatPanel"
+        // Examples: "Window", "Button < UIButton", "Panel < FlatPanel", "CharmItem < UICheckBox"
         const widgetMatch = trimmedLine.match(/^([A-Z][a-zA-Z0-9_]*)(?:\s*<\s*([A-Za-z][A-Za-z0-9_]*))?$/);
         if (widgetMatch) {
             const widgetTypeName = widgetMatch[1];
-            const parentType = widgetMatch[2]; // Inheritance info (for future use)
-            const uiType = getWidgetTypeFromOTUI(widgetTypeName);
+            const parentTypeName = widgetMatch[2]; // Inheritance: parent widget type (e.g., "UICheckBox")
+            
+            // If inheritance is specified, use parent type; otherwise try to map the widget name
+            let uiType;
+            let baseType = null;
+            let useOriginalName = false; // Flag to use original name for custom widgets
+            
+            if (parentTypeName) {
+                // Widget inherits from parent type (e.g., "CharmItem < UICheckBox" or "BestiaryProgressBar < UIWidget")
+                // Map parent type to UI type
+                baseType = getWidgetTypeFromOTUI(parentTypeName);
+                
+                // For custom widgets with inheritance, use the original widget name (not mapped)
+                // This ensures "BestiaryProgressBar < UIWidget" creates "BestiaryProgressBar", not "UIBestiaryProgressBar"
+                useOriginalName = true;
+                uiType = widgetTypeName; // Use original name directly
+            } else {
+                // No inheritance - try to map widget name
+                uiType = getWidgetTypeFromOTUI(widgetTypeName);
+            }
             
             // Check if widget type exists (allow dynamic widgets)
             if (typeof OTUI_WIDGETS !== 'undefined' && !OTUI_WIDGETS[uiType]) {
                 // Try to create a dynamic widget entry if it doesn't exist
-                console.warn(`Widget type not found: ${widgetTypeName} (mapped to ${uiType}). Attempting to create dynamically...`);
+                if (!useOriginalName) {
+                    console.warn(`Widget type not found: ${widgetTypeName} (mapped to ${uiType}). Attempting to create dynamically...`);
+                }
                 
-                // Infer if it's a container based on name
-                const isContainer = widgetTypeName.includes('Panel') || widgetTypeName.includes('Window') || 
-                                   widgetTypeName.includes('Area') || widgetTypeName.includes('Layout') ||
-                                   widgetTypeName.includes('TabBar') || widgetTypeName.includes('MainWindow') ||
-                                   widgetTypeName.includes('Container') || widgetTypeName.includes('Scroll');
+                // If we have a base type from inheritance, use its properties
+                let baseWidgetDef = null;
+                if (baseType && typeof OTUI_WIDGETS !== 'undefined' && OTUI_WIDGETS[baseType]) {
+                    baseWidgetDef = OTUI_WIDGETS[baseType];
+                }
                 
-                // Create dynamic widget entry
+                // Infer if it's a container based on name or base type
+                let isContainer = false;
+                if (baseWidgetDef) {
+                    isContainer = baseWidgetDef.isContainer || false;
+                } else {
+                    isContainer = widgetTypeName.includes('Panel') || widgetTypeName.includes('Window') || 
+                                  widgetTypeName.includes('Area') || widgetTypeName.includes('Layout') ||
+                                  widgetTypeName.includes('TabBar') || widgetTypeName.includes('MainWindow') ||
+                                  widgetTypeName.includes('Container') || widgetTypeName.includes('Scroll') ||
+                                  widgetTypeName.includes('Loot') || widgetTypeName.includes('Category');
+                }
+                
+                // Create dynamic widget entry based on parent type if available
+                // Use the original widget name for custom widgets
                 if (typeof OTUI_WIDGETS !== 'undefined') {
                     OTUI_WIDGETS[uiType] = {
-                        category: isContainer ? "Layout" : "Display",
+                        category: baseWidgetDef ? baseWidgetDef.category : (isContainer ? "Layout" : "Display"),
                         isContainer: isContainer,
-                        props: {},
-                        events: {}
+                        props: baseWidgetDef ? { ...baseWidgetDef.props } : {},
+                        events: baseWidgetDef ? { ...baseWidgetDef.events } : {},
+                        importOnly: useOriginalName // Mark as not in palette, but importable and saveable as template
                     };
-                    console.log(`✓ Created dynamic widget: ${uiType}`);
+                    if (useOriginalName) {
+                        console.log(`✓ Created custom widget group: ${uiType}${baseType ? ` < ${baseType}` : ''} (importable & saveable as template)`);
+                    } else {
+                        console.log(`✓ Created dynamic widget: ${uiType}${baseType ? ` (inherits from ${baseType})` : ''}`);
+                    }
                 } else {
                     console.error(`Cannot create widget: OTUI_WIDGETS not defined`);
                     continue;
@@ -311,7 +349,9 @@ function parseOTUICode(code) {
             }
             
             const widget = {
-                type: uiType,
+                type: uiType, // This is the name to use for widget creation (original name for custom widgets)
+                originalTypeName: widgetTypeName, // Store original name for reference (same as type for custom widgets)
+                parentType: parentTypeName || null, // Store parent type if inherited
                 indentLevel: indentLevel,
                 properties: {},
                 children: [],
@@ -401,17 +441,18 @@ function parseOTUICode(code) {
                     currentWidget.properties['text-offset-x'] = offsetParts[0];
                     currentWidget.properties['text-offset-y'] = offsetParts[1];
                 }
-                } else if (key === 'image-rect' || key === 'image-clip') {
-                    currentWidget.properties[key] = value;
-                } else if (key.startsWith('anchors.')) {
-                    // Handle anchors in space-separated format
-                    currentWidget.properties[key] = value;
-                } else if (key.startsWith('margin-')) {
-                    // Handle margins in space-separated format
-                    currentWidget.properties[key] = value;
-                } else {
-                    currentWidget.properties[key] = value;
-                }
+            } else if (key === 'image-rect' || key === 'image-clip') {
+                currentWidget.properties[key] = value;
+            } else if (key.startsWith('anchors.')) {
+                // Handle anchors in space-separated format
+                currentWidget.properties[key] = value;
+            } else if (key.startsWith('margin-')) {
+                // Handle margins in space-separated format
+                currentWidget.properties[key] = value;
+            } else {
+                // Store all other properties as-is
+                currentWidget.properties[key] = value;
+            }
             continue;
         }
         
@@ -443,22 +484,48 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
     const spacing = 20;
     
     function createWidgetRecursive(widgetData, parent, x, y) {
-        // Create the widget
-        const widget = createWidget(widgetData.type);
+        // For custom widgets with inheritance (e.g., "CharmItem < UICheckBox"),
+        // we need to create the widget using the BASE TYPE, not the custom type name
+        // The custom type name is only for code generation
+        let widgetTypeToCreate = widgetData.type;
+        let isCustomWidget = false;
+        
+        if (widgetData.originalTypeName && widgetData.parentType) {
+            // This is a custom widget with inheritance
+            // Create using the base type (e.g., UICheckBox), not the custom name (CharmItem)
+            const parentTypeMapped = getWidgetTypeFromOTUI(widgetData.parentType);
+            widgetTypeToCreate = parentTypeMapped || widgetData.type;
+            isCustomWidget = true;
+        }
+        
+        // Create the widget using the base type (e.g., UICheckBox for CharmItem < UICheckBox)
+        const widget = createWidget(widgetTypeToCreate);
         if (!widget) {
-            console.warn(`Failed to create widget: ${widgetData.type}`);
+            console.warn(`Failed to create widget: ${widgetTypeToCreate} (for ${widgetData.type})`);
             return null;
         }
         
+        // If this is a custom widget with inheritance, store the original type name for code generation
+        // The widget will behave like the base type but output the original name in code
+        if (isCustomWidget) {
+            // Store the original custom type name (e.g., "CharmItem") for code generation
+            widget.dataset.type = widgetData.type; // Original name (e.g., "CharmItem")
+            widget.dataset.baseType = widgetTypeToCreate; // Base type used to create (e.g., "UICheckBox")
+        }
+        
         // Set initial position (will be adjusted by anchors if present)
-        // Only set initial position if no anchors are specified (for root-level widgets)
-        // For nested widgets, anchors will override this
+        // For root-level widgets (no parent or parent is editorContent), set absolute position
+        // For nested widgets (children), always use anchors - don't set absolute position
         const hasAnchors = Object.keys(widgetData.properties).some(key => key.startsWith('anchors.'));
-        if (!hasAnchors || !parent || parent.id === 'editorContent') {
+        const isRootWidget = !parent || parent.id === 'editorContent';
+        
+        if (isRootWidget) {
+            // Root widget - set absolute position
             widget.style.left = `${x}px`;
             widget.style.top = `${y}px`;
         } else {
-            // Set to 0 initially - anchors will position it correctly
+            // Child widget - always use anchors, set to 0 initially
+            // Anchors will position it correctly relative to parent
             widget.style.left = '0px';
             widget.style.top = '0px';
         }
@@ -481,7 +548,6 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
         
         // Debug: Log all properties to verify anchors are present
         console.log(`Processing widget ${widgetData.type}, properties:`, Object.keys(widgetData.properties));
-        console.log(`Processing widget ${widgetData.type}, all properties with values:`, widgetData.properties);
         
         // Apply properties
         Object.entries(widgetData.properties).forEach(([key, value]) => {
@@ -582,13 +648,12 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
             });
         }
         
-        // Create children
-        let childY = 10; // Start children at top of container
+        // Create children - children are always positioned using anchors relative to parent
+        // Don't use absolute positioning for children
         widgetData.children.forEach((childData) => {
-            const childWidget = createWidgetRecursive(childData, widget, 10, childY);
-            if (childWidget) {
-                childY += (parseInt(childWidget.style.height) || 50) + spacing;
-            }
+            // Pass 0, 0 for children - they will be positioned by anchors
+            const childWidget = createWidgetRecursive(childData, widget, 0, 0);
+            // Children are added to parent, no need to track Y position
         });
         
         return widget;

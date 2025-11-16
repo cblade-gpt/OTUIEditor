@@ -115,7 +115,9 @@ OTUI Syntax Rules:
 - Widgets can have IDs: id: myWidgetId
 - Nested widgets are indented with 2 spaces
 - Common properties: size, text, image-source, color, font, padding, margin, anchors
-- Anchors format: anchors.top, anchors.bottom, anchors.left, anchors.right, anchors.fill
+- Anchors format: anchors.top: parent.top, anchors.bottom: parent.bottom, anchors.left: parent.left, anchors.right: parent.right, anchors.fill: parent, anchors.centerIn: parent, anchors.horizontalCenter: parent.horizontalCenter, anchors.verticalCenter: parent.verticalCenter
+- Anchors define position, then margins add offsets: anchors.left: parent.left + margin-left: 10
+- Always specify anchors for child widgets - they position relative to parent
 - Image sources: image-source: /images/ui/button.png
 - Colors: color: #ffffff or color: white
 
@@ -134,6 +136,9 @@ OTUI Syntax Rules:
         prompt += `Make sure the code is valid OTUI syntax. `;
         prompt += `Include all necessary widgets and properties. `;
         prompt += `If the user wants a window, make it the root widget with an id. `;
+        prompt += `IMPORTANT: For child widgets, ALWAYS use anchors to position them relative to parent. `;
+        prompt += `Example: anchors.left: parent.left, anchors.top: parent.top, anchors.right: parent.right, anchors.bottom: parent.bottom, anchors.centerIn: parent, anchors.horizontalCenter: parent.horizontalCenter, anchors.verticalCenter: parent.verticalCenter. `;
+        prompt += `After anchors, add margins for offsets: margin-left: 10, margin-top: 5, etc. `;
         prompt += `Return ONLY the OTUI code, no explanations or markdown formatting.`;
 
         return prompt;

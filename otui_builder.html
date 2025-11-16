@@ -18,6 +18,7 @@
         <header class="app-header">
             <div class="header-left"><div class="logo"><span class="logo-icon">OTUI</span><span>Builder 0.0.3 Pre-beta</span></div></div>
             <div class="header-right">
+                <button class="btn btn-secondary" id="widgetLibraryBtn" title="Widget Library">📚 Library</button>
                 <button class="btn btn-secondary" id="aiGenerateBtn" title="AI Generate Module">✨ AI Generate</button>
                 <button class="btn btn-secondary" id="settingsBtn" title="Settings">⚙ Settings</button>
                 <button class="btn btn-secondary" id="newBtn">New</button>
@@ -124,6 +125,62 @@
     </div>
 
     <div class="toast" id="toast"></div>
+
+    <!-- Cookie Consent Dialog -->
+    <div id="cookieConsentDialog" class="cookie-consent" style="display: none;">
+        <div class="cookie-consent-content">
+            <div class="cookie-consent-header">
+                <h3>🍪 Cookie Consent</h3>
+            </div>
+            <div class="cookie-consent-body">
+                <p>We use cookies to:</p>
+                <ul>
+                    <li>💾 Save your widget templates for reuse</li>
+                    <li>📝 Auto-save your canvas progress</li>
+                    <li>⚙️ Remember your preferences and settings</li>
+                </ul>
+                <p style="margin-top: 10px; font-size: 0.9rem; color: #94a3b8;">
+                    Cookies are stored locally in your browser and never sent to any server.
+                </p>
+            </div>
+            <div class="cookie-consent-actions">
+                <button class="btn btn-accent" id="acceptCookiesBtn">Accept Cookies</button>
+                <button class="btn btn-secondary" id="declineCookiesBtn">Decline</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Widget Library Modal -->
+    <div id="widgetLibraryModal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2>📚 Widget Library</h2>
+                <button class="modal-close" aria-label="Close">×</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom: 20px;">
+                    <h3 style="font-size: 0.95rem; margin-bottom: 10px; color: var(--text-primary); font-weight: 600;">Save Current Widget</h3>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="saveWidgetNameInput" placeholder="Template name (e.g., CustomButton)" style="flex: 1; padding: 8px; background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: 4px;">
+                        <button class="btn btn-accent" id="saveWidgetBtn">Save</button>
+                    </div>
+                    <small style="color: #94a3b8; display: block; margin-top: 6px;">
+                        Save the currently selected widget (and its children) as a reusable template.
+                    </small>
+                </div>
+                
+                <div style="border-top: 1px solid var(--border-primary); padding-top: 20px;">
+                    <h3 style="font-size: 0.95rem; margin-bottom: 15px; color: var(--text-primary); font-weight: 600;">Saved Templates</h3>
+                    <div id="widgetTemplatesList" style="max-height: 400px; overflow-y: auto;">
+                        <div class="no-templates" style="text-align: center; padding: 40px; color: #94a3b8;">
+                            <p>No saved templates yet.</p>
+                            <p style="font-size: 0.85rem; margin-top: 10px;">Select a widget and save it to create your first template!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div id="previewModal" class="modal" style="display:none;">
         <div class="modal-content" style="max-width: 95vw; width: 1200px; height: 90vh;">

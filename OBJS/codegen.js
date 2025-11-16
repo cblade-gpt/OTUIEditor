@@ -38,10 +38,50 @@ function generateOTUICode() {
             return '';
         }
         
-        const def = OTUI_WIDGETS[type];
+        // Check if widget has a base type (custom widget with inheritance)
+        const widgetBaseType = widget.dataset.baseType;
+        
+        // Try to get widget definition - use base type if available, otherwise use type
+        let def = OTUI_WIDGETS[type];
+        let actualType = type;
+        
+        // If widget not found and has base type, try using base type
+        if (!def && widgetBaseType) {
+            def = OTUI_WIDGETS[widgetBaseType];
+            if (def) {
+                actualType = widgetBaseType; // Use base type for definition lookup
+            }
+        }
+        
+        // If still not found, try with UI prefix
+        if (!def && !type.startsWith('UI')) {
+            const uiType = `UI${type}`;
+            def = OTUI_WIDGETS[uiType];
+            if (def) {
+                actualType = uiType;
+            }
+        }
+        
+        // If still not found, create a fallback definition for custom widgets
         if (!def) {
-            console.warn(`Widget type '${type}' not found in OTUI_WIDGETS`);
-            return '';
+            // This is a custom widget - create a minimal definition
+            // Check if it's likely a container based on name
+            const isContainer = type.includes('Panel') || type.includes('Window') || 
+                               type.includes('Area') || type.includes('Layout') ||
+                               type.includes('Container') || type.includes('Scroll') ||
+                               type.includes('Loot') || type.includes('Category');
+            
+            def = {
+                category: isContainer ? "Layout" : "Display",
+                isContainer: isContainer,
+                props: {},
+                events: {}
+            };
+            
+            // Also add it to OTUI_WIDGETS for future reference
+            if (typeof OTUI_WIDGETS !== 'undefined') {
+                OTUI_WIDGETS[type] = def;
+            }
         }
         
         const isRoot = widget.parentElement && widget.parentElement.id === 'editorContent';
@@ -49,7 +89,18 @@ function generateOTUICode() {
         const moduleTitle = document.getElementById('moduleTitle')?.value || 'My Module';
 
         // Remove "UI" prefix from widget types (e.g., UIButton -> Button, UIPanel -> Panel)
-        const widgetType = type.startsWith('UI') ? type.substring(2) : type;
+        // But preserve original type name if it's a custom widget
+        let widgetType;
+        if (widgetBaseType && widgetBaseType !== type) {
+            // Custom widget with inheritance - output inheritance syntax
+            // type is already the original name (e.g., "CharmItem")
+            // widgetBaseType is the base type (e.g., "UICheckBox")
+            const baseTypeName = widgetBaseType.startsWith('UI') ? widgetBaseType.substring(2) : widgetBaseType;
+            widgetType = `${type} < ${baseTypeName}`;
+        } else {
+            // Regular widget - remove UI prefix
+            widgetType = type.startsWith('UI') ? type.substring(2) : type;
+        }
         
         // Check if widget has events (needs ID for Lua reference)
         const hasEvents = def.events && Object.keys(def.events).length > 0;
