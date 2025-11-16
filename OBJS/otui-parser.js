@@ -8,8 +8,23 @@ function applyAnchorsToWidget(widget, widgetData, parent) {
         return;
     }
     
+    // Get parent dimensions - offsetWidth/Height includes padding but not margin
     const parentWidth = parent.offsetWidth || parseInt(parent.style.width) || 400;
     const parentHeight = parent.offsetHeight || parseInt(parent.style.height) || 300;
+    
+    // Get parent padding - margins in OTUI are relative to the content area (after padding)
+    // In CSS, position:absolute children are positioned relative to padding box
+    // But in OTUI, anchors are relative to content box, so we need to account for parent padding
+    const parentStyle = window.getComputedStyle(parent);
+    const parentPaddingLeft = parseInt(parentStyle.paddingLeft) || 0;
+    const parentPaddingTop = parseInt(parentStyle.paddingTop) || 0;
+    const parentPaddingRight = parseInt(parentStyle.paddingRight) || 0;
+    const parentPaddingBottom = parseInt(parentStyle.paddingBottom) || 0;
+    
+    // Calculate content area dimensions (excluding padding)
+    const contentWidth = parentWidth - parentPaddingLeft - parentPaddingRight;
+    const contentHeight = parentHeight - parentPaddingTop - parentPaddingBottom;
+    
     const widgetWidth = parseInt(widget.style.width) || widget.offsetWidth || 100;
     const widgetHeight = parseInt(widget.style.height) || widget.offsetHeight || 100;
     
@@ -21,56 +36,86 @@ function applyAnchorsToWidget(widget, widgetData, parent) {
     Object.keys(widgetData.properties).forEach(key => {
         if (key.startsWith('anchors.')) {
             const anchorType = key.replace('anchors.', '');
-            anchors[anchorType] = widgetData.properties[key];
+            const anchorValue = widgetData.properties[key];
+            // Anchor values are typically like "parent.left", "parent", etc.
+            // We just need to know if the anchor type exists (value doesn't matter for positioning logic)
+            anchors[anchorType] = anchorValue; // Store the value, but we check for existence
         } else if (key.startsWith('margin-')) {
             const marginType = key.replace('margin-', '');
             margins[marginType] = parseInt(widgetData.properties[key]) || 0;
         }
     });
     
-    // Apply anchors to calculate position
-    let left = parseInt(widget.style.left) || 0;
-    let top = parseInt(widget.style.top) || 0;
+    // Apply anchors to calculate position relative to CONTENT area
+    // CRITICAL: Anchors define the base location, then margins are applied as offsets
+    // If no anchors are specified, default to anchors.left and anchors.top
+    let left = 0;
+    let top = 0;
     
-    // Handle anchors.centerIn
-    if (anchors.centerIn) {
-        left = (parentWidth - widgetWidth) / 2;
-        top = (parentHeight - widgetHeight) / 2;
-        // Apply margins as offset
+    // Check if any anchors are specified
+    const hasAnchors = Object.keys(anchors).length > 0;
+    
+    // Handle anchors.centerIn (value is typically "parent")
+    if (anchors.centerIn !== undefined) {
+        // Anchor: center in parent
+        left = (contentWidth - widgetWidth) / 2;
+        top = (contentHeight - widgetHeight) / 2;
+        // Apply margins as offset from center
         left += (margins.left || 0) - (margins.right || 0);
         top += (margins.top || 0) - (margins.bottom || 0);
     } else {
         // Handle anchors.fill
-        if (anchors.fill) {
+        if (anchors.fill !== undefined) {
+            // Anchor: fill parent
             left = margins.left || 0;
             top = margins.top || 0;
-            widget.style.width = `${parentWidth - (margins.left || 0) - (margins.right || 0)}px`;
-            widget.style.height = `${parentHeight - (margins.top || 0) - (margins.bottom || 0)}px`;
+            widget.style.width = `${contentWidth - (margins.left || 0) - (margins.right || 0)}px`;
+            widget.style.height = `${contentHeight - (margins.top || 0) - (margins.bottom || 0)}px`;
         } else {
-            // Handle individual anchors
+            // Handle individual anchors - anchors define base position, margins are offsets
             // Horizontal positioning
-            if (anchors.left) {
+            if (anchors.left !== undefined) {
+                // Anchor: left edge
                 left = margins.left || 0;
-            } else if (anchors.right) {
-                left = parentWidth - widgetWidth - (margins.right || 0);
-            } else if (anchors.horizontalCenter) {
-                left = (parentWidth - widgetWidth) / 2 + (margins.left || 0) - (margins.right || 0);
+            } else if (anchors.right !== undefined) {
+                // Anchor: right edge
+                left = contentWidth - widgetWidth - (margins.right || 0);
+            } else if (anchors.horizontalCenter !== undefined) {
+                // Anchor: horizontal center
+                left = (contentWidth - widgetWidth) / 2 + (margins.left || 0) - (margins.right || 0);
+            } else {
+                // No horizontal anchor specified - default to left anchor with margin
+                left = margins.left || 0;
             }
             
             // Vertical positioning
-            if (anchors.top) {
+            if (anchors.top !== undefined) {
+                // Anchor: top edge
                 top = margins.top || 0;
-            } else if (anchors.bottom) {
-                top = parentHeight - widgetHeight - (margins.bottom || 0);
-            } else if (anchors.verticalCenter) {
-                top = (parentHeight - widgetHeight) / 2 + (margins.top || 0) - (margins.bottom || 0);
+            } else if (anchors.bottom !== undefined) {
+                // Anchor: bottom edge
+                top = contentHeight - widgetHeight - (margins.bottom || 0);
+            } else if (anchors.verticalCenter !== undefined) {
+                // Anchor: vertical center
+                top = (contentHeight - widgetHeight) / 2 + (margins.top || 0) - (margins.bottom || 0);
+            } else {
+                // No vertical anchor specified - default to top anchor with margin
+                top = margins.top || 0;
             }
         }
     }
     
+    // CRITICAL: Convert from content-relative position to CSS padding-relative position
+    // In CSS, position:absolute children are positioned relative to parent's PADDING box
+    // OTUI margins are relative to the CONTENT box (after padding)
+    // So if we calculated `left` relative to content area, we need to ADD parent padding
+    // to get the CSS position relative to padding box
+    const cssLeft = left + parentPaddingLeft;
+    const cssTop = top + parentPaddingTop;
+    
     // Apply calculated position
-    widget.style.left = `${Math.max(0, left)}px`;
-    widget.style.top = `${Math.max(0, top)}px`;
+    widget.style.left = `${Math.max(0, cssLeft)}px`;
+    widget.style.top = `${Math.max(0, cssTop)}px`;
 }
 
 // Build widget mapping dynamically from OTUI_WIDGETS and style loader
@@ -266,7 +311,8 @@ function parseOTUICode(code) {
         
         // Check for property with colon (key: value)
         // Examples: "image-source: /images/ui/button.png", "padding: 5", "!text: Hello"
-        const propMatchColon = trimmedLine.match(/^([!a-z-]+):\s*(.+)$/);
+        // Match property with colon - allow dots for anchors.right, anchors.left, etc.
+        const propMatchColon = trimmedLine.match(/^([!a-z.-]+):\s*(.+)$/);
         if (propMatchColon) {
             const key = propMatchColon[1];
             let value = propMatchColon[2].trim();
@@ -307,8 +353,9 @@ function parseOTUICode(code) {
         }
         
         // Check for property without colon (key value) - space-separated
-        // Examples: "size 100 50", "image-clip 0 0 32 32"
-        const propMatchSpace = trimmedLine.match(/^([a-z-]+)\s+(.+)$/);
+        // Examples: "size 100 50", "image-clip 0 0 32 32", "anchors.right parent.right"
+        // Allow dots for anchors.right, anchors.left, etc.
+        const propMatchSpace = trimmedLine.match(/^([a-z.-]+)\s+(.+)$/);
         if (propMatchSpace) {
             const key = propMatchSpace[1];
             const value = propMatchSpace[2].trim();
@@ -376,8 +423,17 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
         }
         
         // Set initial position (will be adjusted by anchors if present)
-        widget.style.left = `${x}px`;
-        widget.style.top = `${y}px`;
+        // Only set initial position if no anchors are specified (for root-level widgets)
+        // For nested widgets, anchors will override this
+        const hasAnchors = Object.keys(widgetData.properties).some(key => key.startsWith('anchors.'));
+        if (!hasAnchors || !parent || parent.id === 'editorContent') {
+            widget.style.left = `${x}px`;
+            widget.style.top = `${y}px`;
+        } else {
+            // Set to 0 initially - anchors will position it correctly
+            widget.style.left = '0px';
+            widget.style.top = '0px';
+        }
         
         // Helper function to convert hyphenated keys to camelCase for dataset
         function toCamelCase(str) {
@@ -389,6 +445,15 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
             widget.dataset._keyMap = JSON.stringify({});
         }
         const keyMap = JSON.parse(widget.dataset._keyMap);
+        
+        // Preserve original anchors and margins for code generation
+        // This ensures imported anchors are never recalculated/changed
+        const originalAnchors = [];
+        const originalMargins = {};
+        
+        // Debug: Log all properties to verify anchors are present
+        console.log(`Processing widget ${widgetData.type}, properties:`, Object.keys(widgetData.properties));
+        console.log(`Processing widget ${widgetData.type}, all properties with values:`, widgetData.properties);
         
         // Apply properties
         Object.entries(widgetData.properties).forEach(([key, value]) => {
@@ -407,6 +472,21 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
                 if (contentEl) {
                     contentEl.textContent = value;
                 }
+            } else if (key.startsWith('anchors.')) {
+                // Preserve original anchors
+                originalAnchors.push(`${key}: ${value}`);
+                // Also store in dataset for reference
+                const camelKey = toCamelCase(key);
+                widget.dataset[camelKey] = value;
+                keyMap[camelKey] = key;
+            } else if (key.startsWith('margin-')) {
+                // Preserve original margins
+                const marginType = key.replace('margin-', '');
+                originalMargins[marginType] = parseInt(value) || 0;
+                // Also store in dataset
+                const camelKey = toCamelCase(key);
+                widget.dataset[camelKey] = value;
+                keyMap[camelKey] = key;
             } else {
                 // Store in dataset for code generation
                 // Convert hyphenated keys to camelCase (dataset requirement)
@@ -423,6 +503,18 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
                 }
             }
         });
+        
+        // Store original anchors and margins in dataset so code generation uses them
+        // CRITICAL: Always store anchors array (even if empty) to distinguish from manually created widgets
+        // This ensures ALL imported anchors (left, right, top, bottom, centerIn, fill, etc.) are preserved
+        widget.dataset._originalAnchors = JSON.stringify(originalAnchors);
+        if (Object.keys(originalMargins).length > 0) {
+            widget.dataset._originalMargins = JSON.stringify(originalMargins);
+        }
+        
+        // Debug: Log preserved anchors to verify all are captured
+        console.log(`Widget ${widgetData.type} - Preserved ${originalAnchors.length} anchors:`, originalAnchors);
+        console.log(`Widget ${widgetData.type} - Preserved margins:`, originalMargins);
         
         // Save key mapping
         widget.dataset._keyMap = JSON.stringify(keyMap);

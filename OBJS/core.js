@@ -56,25 +56,38 @@ function startDrag(widget, e) {
         // Get current parent position (in case parent moved)
         const currentParentRect = originalParent.getBoundingClientRect();
         
-        // Calculate mouse position relative to original parent
+        // Calculate mouse position relative to original parent's padding box
         const currentMouseX = (e.clientX - currentParentRect.left) / zoomLevel;
         const currentMouseY = (e.clientY - currentParentRect.top) / zoomLevel;
         
-        // Calculate new position
+        // Calculate new position (relative to padding box, which is what CSS left/top use)
         let x = startLeft + (currentMouseX - startMouseX);
         let y = startTop + (currentMouseY - startMouseY);
         
         // Only constrain bounds if nested inside a container widget
         if (isNested && originalParent.classList.contains('container')) {
-            const maxX = originalParent.offsetWidth - widget.offsetWidth;
-            const maxY = originalParent.offsetHeight - widget.offsetHeight;
+            // Get parent padding to calculate content area
+            const parentStyle = window.getComputedStyle(originalParent);
+            const parentPaddingLeft = parseInt(parentStyle.paddingLeft) || 0;
+            const parentPaddingTop = parseInt(parentStyle.paddingTop) || 0;
+            const parentPaddingRight = parseInt(parentStyle.paddingRight) || 0;
+            const parentPaddingBottom = parseInt(parentStyle.paddingBottom) || 0;
+            
+            // Content area dimensions (excluding padding)
+            const contentWidth = originalParent.offsetWidth - parentPaddingLeft - parentPaddingRight;
+            const contentHeight = originalParent.offsetHeight - parentPaddingTop - parentPaddingBottom;
+            
+            // Max position is content area size minus widget size, plus padding (to get CSS position)
+            const maxX = Math.max(0, contentWidth - widget.offsetWidth) + parentPaddingLeft;
+            const maxY = Math.max(0, contentHeight - widget.offsetHeight) + parentPaddingTop;
+            
             x = Math.max(0, Math.min(x, maxX));
             y = Math.max(0, Math.min(y, maxY));
         }
         
         if (snapToGrid) { 
-            x = Math.round(x / 20) * 20; 
-            y = Math.round(y / 20) * 20; 
+            x = Math.round(x / 1) * 1; 
+            y = Math.round(y / 1) * 1; 
         }
         
         widget.style.left = x + 'px';
@@ -122,21 +135,32 @@ function startDrag(widget, e) {
                 newY = (widgetRect.top - contentRect.top) / zoomLevel;
             } else {
                 // Moving into container - convert to relative coordinates
+                // getBoundingClientRect() gives position relative to viewport
+                // We need position relative to parent's padding box (which is what CSS left/top use)
                 const widgetRect = widget.getBoundingClientRect();
                 const containerRect = targetParent.getBoundingClientRect();
+                
+                // Get parent padding to account for content area offset
+                const parentStyle = window.getComputedStyle(targetParent);
+                const parentPaddingLeft = parseInt(parentStyle.paddingLeft) || 0;
+                const parentPaddingTop = parseInt(parentStyle.paddingTop) || 0;
+                
+                // Calculate position relative to padding box (what CSS left/top use)
                 newX = (widgetRect.left - containerRect.left) / zoomLevel;
                 newY = (widgetRect.top - containerRect.top) / zoomLevel;
                 
-                // Constrain within container bounds
-                const maxX = Math.max(0, targetParent.offsetWidth - widget.offsetWidth);
-                const maxY = Math.max(0, targetParent.offsetHeight - widget.offsetHeight);
-                newX = Math.max(0, Math.min(newX, maxX));
-                newY = Math.max(0, Math.min(newY, maxY));
+                // Constrain within container bounds (accounting for padding)
+                const contentWidth = targetParent.offsetWidth - parentPaddingLeft - parseInt(parentStyle.paddingRight || 0);
+                const contentHeight = targetParent.offsetHeight - parentPaddingTop - parseInt(parentStyle.paddingBottom || 0);
+                const maxX = Math.max(0, contentWidth - widget.offsetWidth);
+                const maxY = Math.max(0, contentHeight - widget.offsetHeight);
+                newX = Math.max(0, Math.min(newX, maxX + parentPaddingLeft));
+                newY = Math.max(0, Math.min(newY, maxY + parentPaddingTop));
             }
             
             if (snapToGrid) {
-                newX = Math.round(newX / 20) * 20;
-                newY = Math.round(newY / 20) * 20;
+                newX = Math.round(newX / 1) * 1;
+                newY = Math.round(newY / 1) * 1;
             }
             
             // Remove from old parent and add to new parent
@@ -147,6 +171,14 @@ function startDrag(widget, e) {
         }
         
         dragWidget = null;
+        
+        // CRITICAL: Clear preserved anchors/margins when widget is moved
+        // This ensures code generation recalculates anchors based on new position
+        if (widget.dataset._originalAnchors !== undefined) {
+            delete widget.dataset._originalAnchors;
+            delete widget.dataset._originalMargins;
+        }
+        
         saveState();
         updateAll();
     };
@@ -221,6 +253,14 @@ function startResize(widget, dir, e) {
     const up = () => {
         document.removeEventListener('mousemove', move);
         document.removeEventListener('mouseup', up);
+        
+        // CRITICAL: Clear preserved anchors/margins when widget is resized
+        // This ensures code generation recalculates anchors based on new size/position
+        if (widget.dataset._originalAnchors !== undefined) {
+            delete widget.dataset._originalAnchors;
+            delete widget.dataset._originalMargins;
+        }
+        
         saveState();
         updateAll();
     };
@@ -268,11 +308,39 @@ function createWidget(type) {
         ${['nw','n','ne','w','e','sw','s','se'].map(d => `<div class="resize-handle ${d}"></div>`).join('')}
     `;
 
-    widget.onclick = e => { e.stopPropagation(); selectWidget(widget); };
+    widget.onclick = e => { 
+        e.stopPropagation(); 
+        // Only select if clicking directly on the widget, not on a child widget
+        const target = e.target;
+        // Check if we clicked on a child widget - if so, don't select parent
+        const clickedWidget = target.closest('.widget');
+        if (clickedWidget === widget || (target.classList.contains('widget-content') && target.parentElement === widget)) {
+            selectWidget(widget); 
+        }
+    };
     widget.onmousedown = e => {
         if (e.button === 0) {
-            e.stopPropagation(); // Prevent parent widgets from starting drag
-            startDrag(widget, e);
+            const target = e.target;
+            
+            // CRITICAL FIX: Check if we're clicking on a child widget
+            // If the target or any of its parents (up to this widget) is a widget, and it's not this widget, don't drag
+            let checkElement = target;
+            while (checkElement && checkElement !== widget) {
+                if (checkElement.classList && checkElement.classList.contains('widget')) {
+                    // We clicked on a child widget - don't drag the parent!
+                    return;
+                }
+                checkElement = checkElement.parentElement;
+            }
+            
+            // Only drag if clicking on widget itself, its content, or resize handles
+            // NOT if clicking on child widgets
+            if (target === widget || 
+                (target.classList.contains('widget-content') && target.parentElement === widget) ||
+                target.classList.contains('resize-handle')) {
+                e.stopPropagation(); // Prevent parent widgets from starting drag
+                startDrag(widget, e);
+            }
         }
     };
     widget.querySelectorAll('.resize-handle').forEach(h => {

@@ -1,4 +1,4 @@
-/* otui_builder.css - v3.7.9 Pre-Beta - FULL & COMPLETE */
+/* otui_builder.css - 0.0.3 Pre-beta - FULL & COMPLETE */
 /* 1,100+ LINES - PERFECT DARK THEME - ACCESSIBILITY 100% - OTCv8 READY */
 
 :root {
@@ -369,6 +369,21 @@ body {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     /* Ensure OTUI styles can override */
     box-sizing: border-box;
+}
+
+/* Labels should be just text - no frame, no background, no border */
+.widget.UILabel {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+}
+
+.widget.UILabel .widget-content {
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
 }
 
 .widget:hover {

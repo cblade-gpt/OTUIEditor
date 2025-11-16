@@ -203,23 +203,70 @@ function generateOTUICode() {
         code += `${indent}  size: ${widgetWidth} ${widgetHeight}\n`;
 
         if (!isRoot) {
-            const anchorInfo = calculateAnchors(widget);
-            if (anchorInfo) {
-                anchorInfo.anchors.forEach(anchor => {
-                    code += `${indent}  ${anchor}\n`;
-                });
+            // CRITICAL: Use original anchors/margins from import if available
+            // This ensures imported OTUI code maintains its exact anchors/margins
+            const originalAnchors = widget.dataset._originalAnchors;
+            const originalMargins = widget.dataset._originalMargins;
+            
+            // CRITICAL: Anchors are REQUIRED - you cannot have margins without anchors
+            // If original anchors exist from import, always use them
+            // Check if _originalAnchors exists (even if empty array) to know this is an imported widget
+            if (originalAnchors !== undefined) {
+                // Use preserved original anchors from import - these are the exact anchors from OTUI
+                try {
+                    const anchors = JSON.parse(originalAnchors);
+                    // Debug: Log what anchors we're about to output
+                    console.log(`Codegen for ${widget.id || widget.dataset.type} - Found ${anchors.length} anchors:`, anchors);
+                    // CRITICAL: Output ALL anchors (left, right, top, bottom, centerIn, fill, etc.)
+                    // Don't filter - output exactly as they were in the imported OTUI code
+                    anchors.forEach(anchor => {
+                        code += `${indent}  ${anchor}\n`;
+                    });
+                } catch (e) {
+                    console.warn('Failed to parse original anchors:', e, 'Raw value:', originalAnchors);
+                }
                 
-                if (anchorInfo.margins.left !== undefined && anchorInfo.margins.left !== 0) {
-                    code += `${indent}  margin-left: ${Math.round(anchorInfo.margins.left)}\n`;
+                // Output margins as additional offsets (anchors define position, margins are offsets)
+                if (originalMargins) {
+                    try {
+                        const margins = JSON.parse(originalMargins);
+                        if (margins.left !== undefined && margins.left !== 0) {
+                            code += `${indent}  margin-left: ${margins.left}\n`;
+                        }
+                        if (margins.top !== undefined && margins.top !== 0) {
+                            code += `${indent}  margin-top: ${margins.top}\n`;
+                        }
+                        if (margins.right !== undefined && margins.right !== 0) {
+                            code += `${indent}  margin-right: ${margins.right}\n`;
+                        }
+                        if (margins.bottom !== undefined && margins.bottom !== 0) {
+                            code += `${indent}  margin-bottom: ${margins.bottom}\n`;
+                        }
+                    } catch (e) {
+                        console.warn('Failed to parse original margins:', e);
+                    }
                 }
-                if (anchorInfo.margins.top !== undefined && anchorInfo.margins.top !== 0) {
-                    code += `${indent}  margin-top: ${Math.round(anchorInfo.margins.top)}\n`;
-                }
-                if (anchorInfo.margins.right !== undefined && anchorInfo.margins.right !== 0) {
-                    code += `${indent}  margin-right: ${Math.round(anchorInfo.margins.right)}\n`;
-                }
-                if (anchorInfo.margins.bottom !== undefined && anchorInfo.margins.bottom !== 0) {
-                    code += `${indent}  margin-bottom: ${Math.round(anchorInfo.margins.bottom)}\n`;
+            } else {
+                // No original anchors/margins preserved - calculate from current position
+                // This is for widgets created manually in the editor
+                const anchorInfo = calculateAnchors(widget);
+                if (anchorInfo) {
+                    anchorInfo.anchors.forEach(anchor => {
+                        code += `${indent}  ${anchor}\n`;
+                    });
+                    
+                    if (anchorInfo.margins.left !== undefined && anchorInfo.margins.left !== 0) {
+                        code += `${indent}  margin-left: ${Math.round(anchorInfo.margins.left)}\n`;
+                    }
+                    if (anchorInfo.margins.top !== undefined && anchorInfo.margins.top !== 0) {
+                        code += `${indent}  margin-top: ${Math.round(anchorInfo.margins.top)}\n`;
+                    }
+                    if (anchorInfo.margins.right !== undefined && anchorInfo.margins.right !== 0) {
+                        code += `${indent}  margin-right: ${Math.round(anchorInfo.margins.right)}\n`;
+                    }
+                    if (anchorInfo.margins.bottom !== undefined && anchorInfo.margins.bottom !== 0) {
+                        code += `${indent}  margin-bottom: ${Math.round(anchorInfo.margins.bottom)}\n`;
+                    }
                 }
             }
         }
@@ -332,7 +379,7 @@ function generateLuaCode() {
     });
     
     // Start generating Lua code following OTCv8 module structure
-    let code = `-- Generated by OTUI Builder v3.7.9 Pre-Beta\n`;
+    let code = `-- Generated by OTUI Builder 0.0.3 Pre-beta\n`;
     code += `-- OTCv8 Compatible Module\n`;
     code += `-- Module: ${moduleTitle}\n\n`;
     

@@ -1137,7 +1137,14 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     // Handle background color (if no image or image failed to load)
     // Check both dataset and style for image-source
     const hasImageSource = widget.dataset['image-source'] || style['image-source'];
-    if (!hasImageSource || !dataPath) {
+    
+    // Labels should always be transparent - no background, no border
+    if (widgetType === 'UILabel') {
+        widget.style.backgroundColor = 'transparent';
+        widget.style.border = 'none';
+        widget.style.boxShadow = 'none';
+        widget.style.padding = '0';
+    } else if (!hasImageSource || !dataPath) {
         if (style.background) {
             widget.style.backgroundColor = style.background;
         }

@@ -491,17 +491,9 @@ function showPreview() {
             previewContent.style.width = `${contentWidth}px`;
             previewContent.style.height = `${contentHeight}px`;
             
-            // Adjust widget positions if needed (offset by padding)
-            if (minLeft < padding || minTop < padding) {
-                const offsetX = Math.max(0, padding - minLeft);
-                const offsetY = Math.max(0, padding - minTop);
-                widgets.forEach(w => {
-                    const left = parseInt(w.style.left) || 0;
-                    const top = parseInt(w.style.top) || 0;
-                    w.style.left = (left + offsetX) + 'px';
-                    w.style.top = (top + offsetY) + 'px';
-                });
-            }
+            // DON'T adjust widget positions - they should be at their exact canvas positions
+            // The padding is just for the window size, not for repositioning widgets
+            // Widgets should appear exactly where they are in the canvas
         }
     }, 100);
 }

@@ -192,6 +192,13 @@ function updatePropertyEditor() {
             
             selectedWidget.dataset[key] = newValue;
             
+            // CRITICAL: Clear preserved anchors/margins when widget properties are edited
+            // This ensures code generation recalculates anchors based on new values
+            if (selectedWidget.dataset._originalAnchors !== undefined) {
+                delete selectedWidget.dataset._originalAnchors;
+                delete selectedWidget.dataset._originalMargins;
+            }
+            
             // Handle special properties
             if (key === 'width') {
                 // Apply width directly
