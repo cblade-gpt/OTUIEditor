@@ -1231,13 +1231,22 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     }
     
     // Special handling for windows with titles: position title at top center
+    // Use OTUI text-offset and text-align properties instead of hardcoded padding
     if (isWindow && hasTitle) {
         const contentEl = widget.querySelector('.widget-content');
         if (contentEl) {
+            // Get text-offset from style (already handled above, but ensure it's applied)
+            const textOffset = style['text-offset'];
+            const textAlign = style['text-align'] || 'top';
+            
+            // Position title at top center using OTUI properties
+            // Don't add extra padding - use the actual padding from OTUI style
             contentEl.style.alignItems = 'flex-start';
             contentEl.style.justifyContent = 'center';
-            contentEl.style.paddingTop = '8px';
             contentEl.style.textAlign = 'center';
+            
+            // Remove hardcoded padding - let OTUI padding and text-offset handle positioning
+            // The padding-top from OTUI (e.g., 35px for Window) already accounts for the title area
         }
     }
     

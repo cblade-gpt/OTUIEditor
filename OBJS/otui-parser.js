@@ -33,13 +33,39 @@ function applyAnchorsToWidget(widget, widgetData, parent) {
     const margins = { left: 0, top: 0, right: 0, bottom: 0 };
     
     // Parse anchor properties from widgetData
+    // OTCv8 uses case-insensitive anchor names: left, right, top, bottom, horizontalcenter, verticalcenter
     Object.keys(widgetData.properties).forEach(key => {
         if (key.startsWith('anchors.')) {
-            const anchorType = key.replace('anchors.', '');
+            const anchorTypeRaw = key.replace('anchors.', '');
+            const anchorTypeLower = anchorTypeRaw.toLowerCase();
             const anchorValue = widgetData.properties[key];
-            // Anchor values are typically like "parent.left", "parent", etc.
-            // We just need to know if the anchor type exists (value doesn't matter for positioning logic)
-            anchors[anchorType] = anchorValue; // Store the value, but we check for existence
+            
+            // Normalize anchor type names to match OTCv8 (case-insensitive)
+            // OTCv8 recognizes: left, right, top, bottom, horizontalcenter, verticalcenter
+            let normalizedType;
+            if (anchorTypeLower === 'left') {
+                normalizedType = 'left';
+            } else if (anchorTypeLower === 'right') {
+                normalizedType = 'right';
+            } else if (anchorTypeLower === 'top') {
+                normalizedType = 'top';
+            } else if (anchorTypeLower === 'bottom') {
+                normalizedType = 'bottom';
+            } else if (anchorTypeLower === 'horizontalcenter' || anchorTypeLower === 'horizontal-center') {
+                normalizedType = 'horizontalCenter';
+            } else if (anchorTypeLower === 'verticalcenter' || anchorTypeLower === 'vertical-center') {
+                normalizedType = 'verticalCenter';
+            } else if (anchorTypeLower === 'centerin' || anchorTypeLower === 'center-in') {
+                normalizedType = 'centerIn';
+            } else if (anchorTypeLower === 'fill') {
+                normalizedType = 'fill';
+            } else {
+                // Unknown anchor type - use as-is but log warning
+                console.warn(`Unknown anchor type: ${anchorTypeRaw}, using as-is`);
+                normalizedType = anchorTypeRaw;
+            }
+            
+            anchors[normalizedType] = anchorValue; // Store the value, but we check for existence
         } else if (key.startsWith('margin-')) {
             const marginType = key.replace('margin-', '');
             margins[marginType] = parseInt(widgetData.properties[key]) || 0;
@@ -311,8 +337,9 @@ function parseOTUICode(code) {
         
         // Check for property with colon (key: value)
         // Examples: "image-source: /images/ui/button.png", "padding: 5", "!text: Hello"
-        // Match property with colon - allow dots for anchors.right, anchors.left, etc.
-        const propMatchColon = trimmedLine.match(/^([!a-z.-]+):\s*(.+)$/);
+        // Match property with colon - allow dots for anchors.right, anchors.left, anchors.verticalCenter, etc.
+        // Use case-insensitive matching to handle anchors.verticalCenter, anchors.horizontalCenter, etc.
+        const propMatchColon = trimmedLine.match(/^([!a-zA-Z.-]+):\s*(.+)$/);
         if (propMatchColon) {
             const key = propMatchColon[1];
             let value = propMatchColon[2].trim();
@@ -354,8 +381,9 @@ function parseOTUICode(code) {
         
         // Check for property without colon (key value) - space-separated
         // Examples: "size 100 50", "image-clip 0 0 32 32", "anchors.right parent.right"
-        // Allow dots for anchors.right, anchors.left, etc.
-        const propMatchSpace = trimmedLine.match(/^([a-z.-]+)\s+(.+)$/);
+        // Allow dots for anchors.right, anchors.left, anchors.verticalCenter, etc.
+        // Use case-insensitive matching to handle anchors.verticalCenter, anchors.horizontalCenter, etc.
+        const propMatchSpace = trimmedLine.match(/^([a-zA-Z.-]+)\s+(.+)$/);
         if (propMatchSpace) {
             const key = propMatchSpace[1];
             const value = propMatchSpace[2].trim();
