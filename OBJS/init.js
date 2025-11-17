@@ -167,7 +167,7 @@ window.initOTUIBuilder = function() {
         setupCodeTabs(codeModal);
     }
     
-    console.log('OTUI Builder 0.0.3 Pre-beta — INITIALIZING...');
+    console.log('OTUI Builder 0.1.0 Beta — INITIALIZING...');
 
     populateWidgetPalette();
     
@@ -495,7 +495,14 @@ window.initOTUIBuilder = function() {
                 }
                 
                 console.log('Parsing OTUI code...');
-                const parsedWidgets = window.parseOTUICode(code);
+                const parsedResult = window.parseOTUICode(code) || {};
+                const parsedWidgets = Array.isArray(parsedResult) ? parsedResult : (parsedResult.widgets || []);
+                const importedTemplates = parsedResult.templates || (Array.isArray(parsedResult) ? [] : []);
+                const templateMap = parsedResult.templateMap || {};
+                if (typeof window !== 'undefined') {
+                    window._importedTemplates = importedTemplates;
+                    window._otuiTemplateMap = templateMap;
+                }
                 console.log('Parsed widgets:', parsedWidgets);
                 
                 if (parsedWidgets.length === 0) {
@@ -928,7 +935,14 @@ window.initOTUIBuilder = function() {
                 }
                 
                 console.log('Parsing imported OTUI file:', file.name);
-                const parsedWidgets = window.parseOTUICode(text);
+                const parsedResult = window.parseOTUICode(text) || {};
+                const parsedWidgets = Array.isArray(parsedResult) ? parsedResult : (parsedResult.widgets || []);
+                const importedTemplates = parsedResult.templates || (Array.isArray(parsedResult) ? [] : []);
+                const templateMap = parsedResult.templateMap || {};
+                if (typeof window !== 'undefined') {
+                    window._importedTemplates = importedTemplates;
+                    window._otuiTemplateMap = templateMap;
+                }
                 console.log('Parsed widgets:', parsedWidgets);
                 
                 if (parsedWidgets.length === 0) {
@@ -1029,8 +1043,8 @@ window.initOTUIBuilder = function() {
     
     saveState();
     updateAll();
-    showToast('OTUI Builder 0.0.3 Pre-beta — READY!');
-    console.log('OTUI Builder 0.0.3 Pre-beta — READY!');
+    showToast('OTUI Builder 0.1.0 Beta — READY!');
+    console.log('OTUI Builder 0.1.0 Beta — READY!');
     console.log('Keyboard shortcuts: Ctrl+Z (undo), Ctrl+Y/Ctrl+Shift+Z (redo), Del/Backspace (delete), Ctrl+C (copy), Ctrl+V (paste), Ctrl+D (duplicate)');
     
     // Initialize right sidebar resize functionality

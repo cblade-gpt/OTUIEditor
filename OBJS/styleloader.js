@@ -5,6 +5,16 @@ let styleCache = {};
 let imageCache = {}; // Maps image paths to blob URLs: { "images/ui/button.png": "blob:http://..." }
 let imageFiles = {}; // Maps image paths to File objects: { "images/ui/button.png": File }
 
+function toCamelCase(str) {
+    return str.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+}
+
+function getDatasetValue(widget, key) {
+    if (!widget || !widget.dataset) return undefined;
+    const camelKey = toCamelCase(key);
+    return widget.dataset[camelKey];
+}
+
 // Widget type mapping from OTUI to builder (bidirectional mapping)
 const WIDGET_TYPE_MAP = {
     // Layout Widgets
@@ -99,6 +109,36 @@ const WIDGET_TYPE_MAP = {
     // MiniWindow
     'UIMiniWindow': 'UIMiniWindow',
     'MiniWindow': 'UIMiniWindow'
+};
+
+const DEFAULT_STYLE_OVERRIDES = {
+    UIPanel: {
+        '__fallbackTheme': 'panel-flat',
+        'image-source': '/images/ui/panel_flat',
+        'image-border': 6,
+        'padding': 6,
+        'color': '#0f1624',
+        'opacity': 0.95,
+        'border-width': 0
+    },
+    UIWidget: {
+        '__fallbackTheme': 'panel-flat',
+        'image-source': '/images/ui/panel_flat',
+        'image-border': 6,
+        'padding': 6,
+        'color': '#0f1624',
+        'opacity': 0.95,
+        'border-width': 0
+    },
+    FlatPanel: {
+        '__fallbackTheme': 'panel-flat',
+        'image-source': '/images/ui/panel_flat',
+        'image-border': 3,
+        'padding': 4,
+        'color': '#1f2c3c',
+        'opacity': 0.9,
+        'border-width': 0
+    }
 };
 
 // Set client data path
@@ -612,7 +652,12 @@ function getStyleForWidget(widgetType) {
     // Get the style name for this widget type (safe lookup)
     const styleName = (styleNameMap && styleNameMap[widgetType]) ? styleNameMap[widgetType] : (widgetType ? widgetType.replace('UI', '') : '');
     
-    if (!styleName) return null;
+    if (!styleName) {
+        if (DEFAULT_STYLE_OVERRIDES[widgetType]) {
+            return { ...DEFAULT_STYLE_OVERRIDES[widgetType] };
+        }
+        return null;
+    }
     
     // Try to find the style directly (safe lookup)
     let style = loadedStyles && loadedStyles[styleName] ? loadedStyles[styleName] : null;
@@ -696,6 +741,10 @@ function getStyleForWidget(widgetType) {
                 }
             }
         }
+    }
+    
+    if (DEFAULT_STYLE_OVERRIDES[widgetType]) {
+        return { ...DEFAULT_STYLE_OVERRIDES[widgetType] };
     }
     
     return null;
@@ -819,6 +868,10 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     
     // Merge base style with state-specific style (e.g., $checked, $unchecked)
     let style = styleObj ? { ...styleObj } : {};
+    const fallbackTheme = style.__fallbackTheme || null;
+    if (fallbackTheme) {
+        delete style.__fallbackTheme;
+    }
     
     // Check for widget state (for checkboxes: checked/unchecked) - safe access
     if (fullStyle && fullStyle.states && typeof fullStyle.states === 'object') {
@@ -951,12 +1004,13 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     
     // Handle image-source with border (9-slice scaling) - do this first as it affects borders
     // Check for custom image-source from dataset first (user-set property), then style
-    let imageSource = widget.dataset['image-source'] || style['image-source'];
+    let imageSource = getDatasetValue(widget, 'image-source') || style['image-source'];
     if (imageSource) {
         let imagePath = imageSource.replace(/^\//, '');
         
         // Get image URL from cache (works with HTTP/HTTPS)
         let imageUrl = getImageUrl(imagePath);
+        let imageApplied = false;
         
         // If not found in cache, try with .png extension
         if (!imageUrl && !imagePath.toLowerCase().endsWith('.png')) {
@@ -989,6 +1043,7 @@ function applyOTUIStyleToWidget(widget, widgetType) {
                 widget.style.backgroundImage = `url("${imageUrl}")`;
                 widget.style.backgroundRepeat = 'no-repeat';
                 widget.style.backgroundColor = 'transparent';
+                imageApplied = true;
                 
                 // CROP: Use overflow hidden to crop everything outside the clip region
                 widget.style.overflow = 'hidden';
@@ -1124,19 +1179,25 @@ function applyOTUIStyleToWidget(widget, widgetType) {
                 widget.style.borderImageOutset = '0';
                 widget.style.backgroundImage = 'none';
                 widget.style.backgroundColor = 'transparent';
+                imageApplied = true;
             } else {
                 // Regular image mode
                 widget.style.backgroundImage = `url("${imageUrl}")`;
                 widget.style.backgroundRepeat = 'no-repeat';
                 widget.style.backgroundPosition = 'center';
                 widget.style.backgroundSize = '100% 100%';
+                imageApplied = true;
             }
         }
+        
+        widget.dataset.imageApplied = imageApplied ? 'true' : 'false';
+    } else {
+        widget.dataset.imageApplied = 'false';
     }
     
     // Handle background color (if no image or image failed to load)
     // Check both dataset and style for image-source
-    const hasImageSource = widget.dataset['image-source'] || style['image-source'];
+    const hasImageSource = widget.dataset.imageApplied === 'true';
     
     // Labels should always be transparent - no background, no border
     if (widgetType === 'UILabel') {
@@ -1148,6 +1209,10 @@ function applyOTUIStyleToWidget(widget, widgetType) {
         if (style.background) {
             widget.style.backgroundColor = style.background;
         }
+    }
+    
+    if (style.opacity !== undefined) {
+        widget.style.opacity = style.opacity;
     }
     
     // Handle padding (OTUI uses padding-top, padding-bottom, etc.)
@@ -1177,7 +1242,7 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     if (marginRight !== undefined) widget.style.marginRight = `${marginRight}px`;
     
     // Handle font (check dataset first for custom values)
-    const fontValue = widget.dataset['font'] || style.font;
+    const fontValue = getDatasetValue(widget, 'font') || style.font;
     if (fontValue) {
         widget.style.fontFamily = '"Tahoma", "Arial", sans-serif';
         const fontSizeMatch = fontValue.match(/(\d+)px/);
@@ -1210,7 +1275,7 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     }
     
     // Handle text alignment (check dataset first for custom values)
-    const textAlign = widget.dataset['text-align'] || style['text-align'];
+    const textAlign = getDatasetValue(widget, 'text-align') || style['text-align'];
     const isWindow = widgetType === 'UIWindow' || widgetType === 'CleanStaticMainWindow';
     const hasTitle = widget.dataset.title && widget.dataset.title.trim() !== '';
     
@@ -1252,8 +1317,8 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     
     // Handle text-offset (check dataset first for custom values)
     // Check for text-offset-x/y in dataset, or text-offset in style
-    const textOffsetX = widget.dataset['text-offset-x'];
-    const textOffsetY = widget.dataset['text-offset-y'];
+    const textOffsetX = getDatasetValue(widget, 'text-offset-x');
+    const textOffsetY = getDatasetValue(widget, 'text-offset-y');
     const textOffset = style['text-offset'];
     
     if (textOffsetX !== undefined || textOffsetY !== undefined || textOffset) {

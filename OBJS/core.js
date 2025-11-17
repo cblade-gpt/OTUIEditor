@@ -27,6 +27,16 @@ function startDrag(widget, e) {
     
     // Track which container we're hovering over
     let hoveredContainer = null;
+    const hoverCleanup = () => {
+        if (hoveredContainer) {
+            hoveredContainer.classList.remove('drag-over');
+            hoveredContainer = null;
+        }
+    };
+    
+    // Drag threshold (pixels) to prevent accidental movement on click
+    const DRAG_THRESHOLD = 3;
+    let isDragging = false;
 
     const move = e => {
         // Find container widget under mouse cursor
@@ -60,9 +70,22 @@ function startDrag(widget, e) {
         const currentMouseX = (e.clientX - currentParentRect.left) / zoomLevel;
         const currentMouseY = (e.clientY - currentParentRect.top) / zoomLevel;
         
+        // Calculate deltas
+        const deltaX = currentMouseX - startMouseX;
+        const deltaY = currentMouseY - startMouseY;
+        
+        // Only start dragging after threshold
+        if (!isDragging) {
+            if (Math.abs(deltaX) < DRAG_THRESHOLD && Math.abs(deltaY) < DRAG_THRESHOLD) {
+                return;
+            }
+            isDragging = true;
+            widget.classList.add('dragging');
+        }
+        
         // Calculate new position (relative to padding box, which is what CSS left/top use)
-        let x = startLeft + (currentMouseX - startMouseX);
-        let y = startTop + (currentMouseY - startMouseY);
+        let x = startLeft + deltaX;
+        let y = startTop + deltaY;
         
         // Only constrain bounds if nested inside a container widget
         if (isNested && originalParent.classList.contains('container')) {
@@ -98,9 +121,12 @@ function startDrag(widget, e) {
         document.removeEventListener('mousemove', move);
         document.removeEventListener('mouseup', up);
         
-        // Remove hover state
-        if (hoveredContainer) {
-            hoveredContainer.classList.remove('drag-over');
+        widget.classList.remove('dragging');
+        
+        if (!isDragging) {
+            hoverCleanup();
+            dragWidget = null;
+            return;
         }
         
         // Determine target container
@@ -170,6 +196,7 @@ function startDrag(widget, e) {
             widget.style.top = `${newY}px`;
         }
         
+        hoverCleanup();
         dragWidget = null;
         
         // CRITICAL: Clear preserved anchors/margins when widget is moved

@@ -108,7 +108,7 @@ class OTUIAIGenerator {
 OTUI Syntax Rules:
 - Widgets are defined with their type name (e.g., Window, Button, Panel, Label)
 - Properties use format: property: value
-- String values with spaces need quotes: text: "Hello World"
+- String values with spaces need quotes: text: "Hello"
 - Numeric values don't need quotes: size: 200 150
 - Boolean properties are just the property name: enabled
 - Widgets can inherit from parent styles: WidgetName < ParentName

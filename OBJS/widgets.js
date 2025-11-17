@@ -3,7 +3,7 @@ const OTUI_WIDGETS = {
     // ========== LAYOUT WIDGETS ==========
     UIWindow: { category: "Layout", isContainer: true, props: { title: "My Window", draggable: true, closable: true }, events: { onClose: 'function()' } },
     CleanStaticMainWindow: { category: "Layout", isContainer: true, props: { title: "Main Window" }, events: { onClose: 'function()' } },
-    UIPanel: { category: "Layout", isContainer: true, props: { color: "alpha", opacity: 0.9 }, events: {} },
+    UIPanel: { category: "Layout", isContainer: true, props: { }, events: {} },
     UIWidget: { category: "Layout", isContainer: true, props: { }, events: {} },
     UIHorizontalSeparator: { category: "Layout", isContainer: false, props: { color: "#666" }, events: {} },
     UIVerticalSeparator: { category: "Layout", isContainer: false, props: { color: "#666" }, events: {} },
@@ -15,7 +15,7 @@ const OTUI_WIDGETS = {
     UIGridLayout: { category: "Layout", isContainer: true, props: { cellWidth: 32, cellHeight: 32 }, events: {} },
     
     // ========== CONTROLS ==========
-    UIButton: { category: "Controls", isContainer: false, props: { text: "Click Me" }, events: { onClick: 'function()' } },
+    UIButton: { category: "Controls", isContainer: false, props: { text: "Click" }, events: { onClick: 'function()' } },
     UICheckBox: { category: "Controls", isContainer: false, props: { text: "Option", checked: false }, events: { onCheckChange: 'function(widget, checked)' } },
     UIRadioButton: { category: "Controls", isContainer: false, props: { text: "Option", checked: false, group: "group1" }, events: { onCheckChange: 'function(widget, checked)' } },
     UITextEdit: { category: "Controls", isContainer: false, props: { placeholder: "Enter text...", text: "" }, events: { onTextChange: 'function(widget, text)' } },
@@ -28,7 +28,7 @@ const OTUI_WIDGETS = {
     UISpinBox: { category: "Controls", isContainer: false, props: { value: 0, minimum: 0, maximum: 100, step: 1 }, events: { onValueChange: 'function(widget, value)' } },
     
     // ========== DISPLAY ==========
-    UILabel: { category: "Display", isContainer: false, props: { text: "Hello World", align: "center" }, events: {} },
+    UILabel: { category: "Display", isContainer: false, props: { text: "", align: "center" }, events: {} },
     UIImage: { category: "Display", isContainer: false, props: { source: "/images/icon.png" }, events: {} },
     UISprite: { category: "Display", isContainer: false, props: { spriteId: 1, width: 32, height: 32 }, events: {} },
     UIMap: { category: "Display", isContainer: false, props: { zoom: 1, floor: 7 }, events: { onMousePress: 'function(widget, pos)' } },

@@ -1,29 +1,166 @@
 // OBJS/otui-parser.js - Parse OTUI code and create widgets on canvas
+// Based on OTCv8 source: uitranslator.cpp, uianchorlayout.cpp, uiwidgetbasestyle.cpp
 // Supports dynamically discovered widgets from loaded OTUI styles
 
-// Helper function to apply anchors to position a widget relative to its parent
-function applyAnchorsToWidget(widget, widgetData, parent) {
-    if (!parent || parent.id === 'editorContent') {
-        // Root level widget - no anchors to apply
-        return;
+// Helper function to get padding rect (content area) - matches OTCv8's getPaddingRect()
+function getPaddingRect(element) {
+    const style = window.getComputedStyle(element);
+    const paddingLeft = parseInt(style.paddingLeft) || 0;
+    const paddingTop = parseInt(style.paddingTop) || 0;
+    const paddingRight = parseInt(style.paddingRight) || 0;
+    const paddingBottom = parseInt(style.paddingBottom) || 0;
+    
+    const width = element.offsetWidth || parseInt(element.style.width) || 0;
+    const height = element.offsetHeight || parseInt(element.style.height) || 0;
+    
+    return {
+        left: paddingLeft,
+        top: paddingTop,
+        right: width - paddingRight,
+        bottom: height - paddingBottom,
+        width: width - paddingLeft - paddingRight,
+        height: height - paddingTop - paddingBottom,
+        centerX: (width - paddingLeft - paddingRight) / 2 + paddingLeft,
+        centerY: (height - paddingTop - paddingBottom) / 2 + paddingTop
+    };
+}
+
+// Helper function to translate anchor edge - matches OTCv8's translateAnchorEdge()
+function translateAnchorEdge(anchorEdge) {
+    const normalized = anchorEdge.toLowerCase().replace(/\s+/g, '');
+    if (normalized === 'left') return 'left';
+    if (normalized === 'right') return 'right';
+    if (normalized === 'top') return 'top';
+    if (normalized === 'bottom') return 'bottom';
+    if (normalized === 'horizontalcenter' || normalized === 'horizontal-center') return 'horizontalCenter';
+    if (normalized === 'verticalcenter' || normalized === 'vertical-center') return 'verticalCenter';
+    return null;
+}
+
+// Helper function to get hooked widget - matches OTCv8's UIAnchor::getHookedWidget()
+function getHookedWidget(widget, parent, hookedWidgetId) {
+    if (!parent) return null;
+    
+    if (hookedWidgetId === 'parent') {
+        return parent;
+    } else if (hookedWidgetId === 'next') {
+        // getChildAfter equivalent
+        const siblings = Array.from(parent.children).filter(child => 
+            child.classList && child.classList.contains('widget')
+        );
+        const currentIndex = siblings.indexOf(widget);
+        return currentIndex >= 0 && currentIndex < siblings.length - 1 ? siblings[currentIndex + 1] : null;
+    } else if (hookedWidgetId === 'prev') {
+        // getChildBefore equivalent
+        const siblings = Array.from(parent.children).filter(child => 
+            child.classList && child.classList.contains('widget')
+        );
+        const currentIndex = siblings.indexOf(widget);
+        return currentIndex > 0 ? siblings[currentIndex - 1] : null;
+    } else {
+        // getChildById equivalent
+        return Array.from(parent.children).find(child => 
+            child.classList && child.classList.contains('widget') && child.id === hookedWidgetId
+        ) || null;
+    }
+}
+
+// Helper function to get hooked point - matches OTCv8's UIAnchor::getHookedPoint()
+function getHookedPoint(hookedWidget, parent, hookedEdge) {
+    let hookedWidgetRect;
+    
+    if (hookedWidget === parent) {
+        // CRITICAL: When anchoring to parent, use padding rect (content area)
+        // This matches OTCv8: if(hookedWidget == parentWidget) hookedWidgetRect = parentWidget->getPaddingRect();
+        // OTCv8's getPaddingRect() returns content area coordinates (after padding)
+        // But CSS position:absolute uses padding-relative coordinates
+        // So we need to convert: CSS coordinate = content coordinate (which is already padding-relative for left/top)
+        const paddingRect = getPaddingRect(parent);
+        // For parent, paddingRect.left/top are already in CSS padding-relative coordinates (they equal paddingLeft/paddingTop)
+        // paddingRect.right/bottom are content-relative, so we need to convert them to CSS padding-relative
+        // CSS right edge = parent width (padding box right edge)
+        // CSS bottom edge = parent height (padding box bottom edge)
+        const parentWidth = parent.offsetWidth || parseInt(parent.style.width) || 0;
+        const parentHeight = parent.offsetHeight || parseInt(parent.style.height) || 0;
+        hookedWidgetRect = {
+            left: paddingRect.left,  // Already CSS padding-relative (equals paddingLeft)
+            top: paddingRect.top,    // Already CSS padding-relative (equals paddingTop)
+            right: paddingRect.right, // Content-relative right edge, but we need CSS padding-relative
+            bottom: paddingRect.bottom, // Content-relative bottom edge, but we need CSS padding-relative
+            width: paddingRect.width,
+            height: paddingRect.height,
+            horizontalCenter: paddingRect.centerX, // Already CSS padding-relative
+            verticalCenter: paddingRect.centerY    // Already CSS padding-relative
+        };
+        // Actually, wait - let me check: paddingRect.right = width - paddingRight
+        // In CSS coordinates, the right edge of content area = width - paddingRight
+        // But CSS position uses padding-relative, so right edge of content = width - paddingRight (which is what we have)
+        // So paddingRect.right is already correct for CSS coordinates!
+        // Same for bottom: paddingRect.bottom = height - paddingBottom, which is correct for CSS
+    } else {
+        // For other widgets, use their actual rect (already in CSS padding-relative coordinates)
+        const left = parseInt(hookedWidget.style.left) || 0;
+        const top = parseInt(hookedWidget.style.top) || 0;
+        const width = hookedWidget.offsetWidth || parseInt(hookedWidget.style.width) || 0;
+        const height = hookedWidget.offsetHeight || parseInt(hookedWidget.style.height) || 0;
+        
+        hookedWidgetRect = {
+            left: left,
+            top: top,
+            right: left + width,
+            bottom: top + height,
+            width: width,
+            height: height,
+            horizontalCenter: left + width / 2,
+            verticalCenter: top + height / 2
+        };
     }
     
-    // Get parent dimensions - offsetWidth/Height includes padding but not margin
-    const parentWidth = parent.offsetWidth || parseInt(parent.style.width) || 400;
-    const parentHeight = parent.offsetHeight || parseInt(parent.style.height) || 300;
+    // Get point based on hooked edge - matches OTCv8's switch statement
+    switch (hookedEdge) {
+        case 'left':
+            return hookedWidgetRect.left;
+        case 'right':
+            return hookedWidgetRect.right;
+        case 'top':
+            return hookedWidgetRect.top;
+        case 'bottom':
+            return hookedWidgetRect.bottom;
+        case 'horizontalCenter':
+            return hookedWidgetRect.horizontalCenter;
+        case 'verticalCenter':
+            return hookedWidgetRect.verticalCenter;
+        default:
+            return 0;
+    }
+}
+
+// Track which widgets have had their anchors applied (to prevent infinite recursion)
+const anchorUpdateMap = new WeakMap();
+
+// Helper function to apply anchors to position a widget - matches OTCv8's UIAnchorLayout::updateWidget()
+function applyAnchorsToWidget(widget, widgetData, parent, first = null) {
+    if (!parent || parent.id === 'editorContent') {
+        // Root level widget - no anchors to apply
+        return false;
+    }
     
-    // Get parent padding - margins in OTUI are relative to the content area (after padding)
-    // In CSS, position:absolute children are positioned relative to padding box
-    // But in OTUI, anchors are relative to content box, so we need to account for parent padding
-    const parentStyle = window.getComputedStyle(parent);
-    const parentPaddingLeft = parseInt(parentStyle.paddingLeft) || 0;
-    const parentPaddingTop = parseInt(parentStyle.paddingTop) || 0;
-    const parentPaddingRight = parseInt(parentStyle.paddingRight) || 0;
-    const parentPaddingBottom = parseInt(parentStyle.paddingBottom) || 0;
+    // Prevent infinite recursion (matches OTCv8's check)
+    if (first === widget) {
+        console.error(`Widget ${widget.id || widgetData.type} is recursively anchored to itself`);
+        return false;
+    }
     
-    // Calculate content area dimensions (excluding padding)
-    const contentWidth = parentWidth - parentPaddingLeft - parentPaddingRight;
-    const contentHeight = parentHeight - parentPaddingTop - parentPaddingBottom;
+    if (!first) {
+        first = widget;
+    }
+    
+    // Check if this widget has already been updated in this pass
+    const updateKey = `${parent.id || 'root'}_${widget.id || 'widget'}`;
+    if (anchorUpdateMap.get(widget) === updateKey) {
+        return false; // Already updated
+    }
+    anchorUpdateMap.set(widget, updateKey);
     
     const widgetWidth = parseInt(widget.style.width) || widget.offsetWidth || 100;
     const widgetHeight = parseInt(widget.style.height) || widget.offsetHeight || 100;
@@ -33,212 +170,176 @@ function applyAnchorsToWidget(widget, widgetData, parent) {
     const margins = { left: 0, top: 0, right: 0, bottom: 0 };
     
     // Parse anchor properties from widgetData
-    // OTCv8 uses case-insensitive anchor names: left, right, top, bottom, horizontalcenter, verticalcenter
     Object.keys(widgetData.properties).forEach(key => {
         if (key.startsWith('anchors.')) {
             const anchorTypeRaw = key.replace('anchors.', '');
-            const anchorTypeLower = anchorTypeRaw.toLowerCase();
-            const anchorValue = widgetData.properties[key];
-            
-            // Normalize anchor type names to match OTCv8 (case-insensitive)
-            // OTCv8 recognizes: left, right, top, bottom, horizontalcenter, verticalcenter
-            let normalizedType;
-            if (anchorTypeLower === 'left') {
-                normalizedType = 'left';
-            } else if (anchorTypeLower === 'right') {
-                normalizedType = 'right';
-            } else if (anchorTypeLower === 'top') {
-                normalizedType = 'top';
-            } else if (anchorTypeLower === 'bottom') {
-                normalizedType = 'bottom';
-            } else if (anchorTypeLower === 'horizontalcenter' || anchorTypeLower === 'horizontal-center') {
-                normalizedType = 'horizontalCenter';
-            } else if (anchorTypeLower === 'verticalcenter' || anchorTypeLower === 'vertical-center') {
-                normalizedType = 'verticalCenter';
-            } else if (anchorTypeLower === 'centerin' || anchorTypeLower === 'center-in') {
-                normalizedType = 'centerIn';
-            } else if (anchorTypeLower === 'fill') {
-                normalizedType = 'fill';
-            } else {
-                // Unknown anchor type - use as-is but log warning
-                console.warn(`Unknown anchor type: ${anchorTypeRaw}, using as-is`);
-                normalizedType = anchorTypeRaw;
+            const anchorType = translateAnchorEdge(anchorTypeRaw);
+            if (anchorType) {
+                anchors[anchorType] = widgetData.properties[key];
+            } else if (anchorTypeRaw.toLowerCase() === 'centerin' || anchorTypeRaw.toLowerCase() === 'center-in') {
+                anchors.centerIn = widgetData.properties[key];
+            } else if (anchorTypeRaw.toLowerCase() === 'fill') {
+                anchors.fill = widgetData.properties[key];
             }
-            
-            anchors[normalizedType] = anchorValue; // Store the value, but we check for existence
         } else if (key.startsWith('margin-')) {
             const marginType = key.replace('margin-', '');
             margins[marginType] = parseInt(widgetData.properties[key]) || 0;
         }
     });
     
-    // Apply anchors to calculate position relative to CONTENT area
-    // CRITICAL: Anchors define the base location, then margins are applied as offsets
-    // If no anchors are specified, default to anchors.left and anchors.top
-    let left = 0;
-    let top = 0;
+    // Start with current rect (matches OTCv8: Rect newRect = widget->getRect())
+    let newLeft = parseInt(widget.style.left) || 0;
+    let newTop = parseInt(widget.style.top) || 0;
+    let verticalMoved = false;
+    let horizontalMoved = false;
     
-    // Check if any anchors are specified
-    const hasAnchors = Object.keys(anchors).length > 0;
-    
-    // Handle anchors.centerIn (value is typically "parent")
+    // Handle centerIn and fill shortcuts
     if (anchors.centerIn !== undefined) {
-        // Anchor: center in parent
-        left = (contentWidth - widgetWidth) / 2;
-        top = (contentHeight - widgetHeight) / 2;
-        // Apply margins as offset from center
-        left += (margins.left || 0) - (margins.right || 0);
-        top += (margins.top || 0) - (margins.bottom || 0);
+        const hookedWidgetId = anchors.centerIn.toString().toLowerCase();
+        const hookedWidget = getHookedWidget(widget, parent, hookedWidgetId);
+        if (hookedWidget) {
+            const centerX = getHookedPoint(hookedWidget, parent, 'horizontalCenter');
+            const centerY = getHookedPoint(hookedWidget, parent, 'verticalCenter');
+            newLeft = centerX - widgetWidth / 2 + margins.left - margins.right;
+            newTop = centerY - widgetHeight / 2 + margins.top - margins.bottom;
+            horizontalMoved = true;
+            verticalMoved = true;
+        }
+    } else if (anchors.fill !== undefined) {
+        const hookedWidgetId = anchors.fill.toString().toLowerCase();
+        const hookedWidget = getHookedWidget(widget, parent, hookedWidgetId);
+        if (hookedWidget) {
+            const leftPoint = getHookedPoint(hookedWidget, parent, 'left');
+            const rightPoint = getHookedPoint(hookedWidget, parent, 'right');
+            const topPoint = getHookedPoint(hookedWidget, parent, 'top');
+            const bottomPoint = getHookedPoint(hookedWidget, parent, 'bottom');
+            newLeft = leftPoint + margins.left;
+            newTop = topPoint + margins.top;
+            widget.style.width = `${Math.max(0, rightPoint - leftPoint - margins.left - margins.right)}px`;
+            widget.style.height = `${Math.max(0, bottomPoint - topPoint - margins.top - margins.bottom)}px`;
+            horizontalMoved = true;
+            verticalMoved = true;
+        }
     } else {
-        // Handle anchors.fill
-        if (anchors.fill !== undefined) {
-            // Anchor: fill parent
-            left = margins.left || 0;
-            top = margins.top || 0;
-            widget.style.width = `${contentWidth - (margins.left || 0) - (margins.right || 0)}px`;
-            widget.style.height = `${contentHeight - (margins.top || 0) - (margins.bottom || 0)}px`;
-        } else {
-            // Handle individual anchors - anchors define base position, margins are offsets
-            // Horizontal positioning
-            if (anchors.left !== undefined) {
-                // Anchor: left edge
-                left = margins.left || 0;
-            } else if (anchors.right !== undefined) {
-                // Anchor: right edge
-                left = contentWidth - widgetWidth - (margins.right || 0);
-            } else if (anchors.horizontalCenter !== undefined) {
-                // Anchor: horizontal center
-                left = (contentWidth - widgetWidth) / 2 + (margins.left || 0) - (margins.right || 0);
-            } else {
-                // No horizontal anchor specified - default to left anchor with margin
-                left = margins.left || 0;
+        // Process individual anchors - matches OTCv8's anchor processing loop
+        for (const [anchoredEdge, anchorValue] of Object.entries(anchors)) {
+            if (anchoredEdge === 'centerIn' || anchoredEdge === 'fill') continue;
+            
+            // Parse anchor value: "hookedWidgetId.hookedEdge" (e.g., "parent.left", "prev.bottom")
+            const anchorValueStr = anchorValue.toString();
+            if (anchorValueStr === 'none') continue;
+            
+            const parts = anchorValueStr.split('.');
+            if (parts.length !== 2) {
+                console.warn(`Invalid anchor format: ${anchorValueStr}, expected "hookedWidgetId.hookedEdge"`);
+                continue;
             }
             
-            // Vertical positioning
-            if (anchors.top !== undefined) {
-                // Anchor: top edge
-                top = margins.top || 0;
-            } else if (anchors.bottom !== undefined) {
-                // Anchor: bottom edge
-                top = contentHeight - widgetHeight - (margins.bottom || 0);
-            } else if (anchors.verticalCenter !== undefined) {
-                // Anchor: vertical center
-                top = (contentHeight - widgetHeight) / 2 + (margins.top || 0) - (margins.bottom || 0);
-            } else {
-                // No vertical anchor specified - default to top anchor with margin
-                top = margins.top || 0;
+            const hookedWidgetId = parts[0].toLowerCase();
+            const hookedEdgeRaw = parts[1];
+            const hookedEdge = translateAnchorEdge(hookedEdgeRaw);
+            
+            if (!hookedEdge) {
+                console.warn(`Invalid hooked edge: ${hookedEdgeRaw}`);
+                continue;
+            }
+            
+            // Get hooked widget
+            const hookedWidget = getHookedWidget(widget, parent, hookedWidgetId);
+            if (!hookedWidget) {
+                continue; // Skip invalid anchors (matches OTCv8 behavior)
+            }
+            
+            // CRITICAL: Recursively update hooked widget first (matches OTCv8 line 198-199)
+            if (hookedWidget !== parent) {
+                const hookedWidgetData = hookedWidget.dataset._widgetData ? JSON.parse(hookedWidget.dataset._widgetData) : null;
+                if (hookedWidgetData && !anchorUpdateMap.get(hookedWidget)) {
+                    applyAnchorsToWidget(hookedWidget, hookedWidgetData, parent, first);
+                }
+            }
+            
+            // Get hooked point
+            const point = getHookedPoint(hookedWidget, parent, hookedEdge);
+            
+            // Apply anchor based on anchored edge - matches OTCv8's switch statement exactly
+            switch (anchoredEdge) {
+                case 'horizontalCenter':
+                    newLeft = point - widgetWidth / 2 + margins.left - margins.right;
+                    horizontalMoved = true;
+                    break;
+                case 'left':
+                    if (!horizontalMoved) {
+                        newLeft = point + margins.left;
+                        horizontalMoved = true;
+                    } else {
+                        newLeft = point + margins.left;
+                    }
+                    break;
+                case 'right':
+                    if (!horizontalMoved) {
+                        newLeft = point - widgetWidth - margins.right;
+                        horizontalMoved = true;
+                    } else {
+                        newLeft = point - widgetWidth - margins.right;
+                    }
+                    break;
+                case 'verticalCenter':
+                    newTop = point - widgetHeight / 2 + margins.top - margins.bottom;
+                    verticalMoved = true;
+                    break;
+                case 'top':
+                    if (!verticalMoved) {
+                        newTop = point + margins.top;
+                        verticalMoved = true;
+                    } else {
+                        newTop = point + margins.top;
+                    }
+                    break;
+                case 'bottom':
+                    if (!verticalMoved) {
+                        newTop = point - widgetHeight - margins.bottom;
+                        verticalMoved = true;
+                    } else {
+                        newTop = point - widgetHeight - margins.bottom;
+                    }
+                    break;
             }
         }
     }
     
-    // CRITICAL: Convert from content-relative position to CSS padding-relative position
-    // In CSS, position:absolute children are positioned relative to parent's PADDING box
-    // OTUI margins are relative to the CONTENT box (after padding)
-    // So if we calculated `left` relative to content area, we need to ADD parent padding
-    // to get the CSS position relative to padding box
-    const cssLeft = left + parentPaddingLeft;
-    const cssTop = top + parentPaddingTop;
+    // Apply calculated position (already in CSS padding-relative coordinates)
+    widget.style.left = `${Math.max(0, newLeft)}px`;
+    widget.style.top = `${Math.max(0, newTop)}px`;
     
-    // Apply calculated position
-    widget.style.left = `${Math.max(0, cssLeft)}px`;
-    widget.style.top = `${Math.max(0, cssTop)}px`;
+    return true;
 }
 
 // Build widget mapping dynamically from OTUI_WIDGETS and style loader
 function buildWidgetMapping() {
     const mapping = {};
     
-    // First, use the style loader's mapping if available
-    if (window.OTUIStyleLoader && window.OTUIStyleLoader.getStyleForWidget) {
-        // Get all widget types from OTUI_WIDGETS
-        if (typeof OTUI_WIDGETS !== 'undefined') {
-            Object.keys(OTUI_WIDGETS).forEach(uiType => {
-                // Remove UI prefix for OTUI name
-                const otuiName = uiType.startsWith('UI') ? uiType.substring(2) : uiType;
-                mapping[otuiName] = uiType;
-                mapping[uiType] = uiType; // Also support full name
-            });
-        }
-    }
-    
-    // Add common mappings
-    const commonMappings = {
-        'Window': 'UIWindow',
-        'CleanStaticMainWindow': 'CleanStaticMainWindow',
-        'Label': 'UILabel',
-        'Panel': 'UIPanel',
-        'Widget': 'UIWidget',
-        'ScrollablePanel': 'UIScrollArea',
-        'ScrollArea': 'UIScrollArea',
-        'VerticalScrollBar': 'UIScrollBar',
-        'HorizontalScrollBar': 'UIScrollBar',
-        'ScrollBar': 'UIScrollBar',
-        'MiniWindow': 'UIMiniWindow',
-        'Button': 'UIButton',
-        'TextEdit': 'UITextEdit',
-        'CheckBox': 'UICheckBox',
-        'Checkbox': 'UICheckBox',
-        'RadioButton': 'UIRadioButton',
-        'ProgressBar': 'UIProgressBar',
-        'Item': 'UIItem',
-        'Image': 'UIImage',
-        'Sprite': 'UISprite',
-        'Separator': 'UISeparator',
-        'HorizontalSeparator': 'UIHorizontalSeparator',
-        'VerticalSeparator': 'UIVerticalSeparator',
-        'HorizontalLayout': 'UIHorizontalLayout',
-        'VerticalLayout': 'UIVerticalLayout',
-        'TabBar': 'UITabBar',
-        'Tab': 'UITab',
-        'GridLayout': 'UIGridLayout',
-        'ComboBox': 'UIComboBox',
-        'HealthBar': 'UIHealthBar',
-        'ManaBar': 'UIManaBar',
-        'ExperienceBar': 'UIExperienceBar'
-    };
-    
-    // Merge common mappings
-    Object.assign(mapping, commonMappings);
-    
-    // Add mappings from loaded styles
-    if (window.OTUIStyleLoader && window.OTUIStyleLoader.loadedStyles) {
-        const styles = window.OTUIStyleLoader.loadedStyles();
-        Object.keys(styles).forEach(styleName => {
-            if (!mapping[styleName]) {
-                // Try to infer widget type from style name
-                let widgetType = styleName;
-                if (!styleName.startsWith('UI')) {
-                    widgetType = `UI${styleName}`;
-                }
-                // Only add if it exists in OTUI_WIDGETS
-                if (typeof OTUI_WIDGETS !== 'undefined' && OTUI_WIDGETS[widgetType]) {
-                    mapping[styleName] = widgetType;
-                }
-            }
+    // Add all widgets from OTUI_WIDGETS
+    if (typeof OTUI_WIDGETS !== 'undefined') {
+        Object.keys(OTUI_WIDGETS).forEach(type => {
+            const otuiName = type.startsWith('UI') ? type.substring(2) : type;
+            mapping[otuiName] = type;
+            mapping[type] = type; // Also map full name
         });
     }
     
     return mapping;
 }
 
-// Get widget type from OTUI name (supports dynamic discovery)
+let widgetMapping = null;
+
 function getWidgetTypeFromOTUI(otuiName) {
-    const mapping = buildWidgetMapping();
-    
-    // Direct lookup
-    if (mapping[otuiName]) {
-        return mapping[otuiName];
+    if (!widgetMapping) {
+        widgetMapping = buildWidgetMapping();
     }
     
-    // Try with UI prefix
-    const withUIPrefix = `UI${otuiName}`;
-    if (typeof OTUI_WIDGETS !== 'undefined' && OTUI_WIDGETS[withUIPrefix]) {
-        return withUIPrefix;
-    }
-    
-    // Try exact match
-    if (typeof OTUI_WIDGETS !== 'undefined' && OTUI_WIDGETS[otuiName]) {
-        return otuiName;
+    // Check direct mapping
+    if (widgetMapping[otuiName]) {
+        return widgetMapping[otuiName];
     }
     
     // Use style loader's mapping if available
@@ -256,24 +357,51 @@ function getWidgetTypeFromOTUI(otuiName) {
 
 function parseOTUICode(code) {
     const lines = code.split('\n');
-    const widgets = [];
-    const stack = []; // Stack to track parent widgets
+    const widgets = []; // Only actual widget instances to display
+    const templates = {}; // Template definitions (with <) - stored but not displayed
+    const templateDefinitions = []; // Preserve original template blocks (for regeneration)
+    const templateCaptureStack = []; // Track template blocks currently being parsed
+    const stack = []; // Stack to track parent widgets/templates
+    let inTemplateDefinition = false; // Track if we're inside a template definition
+    let templateIndent = -1; // Track indentation level of current template
     
     for (let i = 0; i < lines.length; i++) {
         const originalLine = lines[i];
         const trimmedLine = originalLine.trim();
+        let captureHandled = false;
+        const captureCurrentLine = () => {
+            if (!captureHandled && templateCaptureStack.length > 0) {
+                const currentTemplateCapture = templateCaptureStack[templateCaptureStack.length - 1];
+                if (currentTemplateCapture && currentTemplateCapture.lines) {
+                    currentTemplateCapture.lines.push(originalLine);
+                }
+                captureHandled = true;
+            }
+        };
         
         // Skip empty lines and comments
-        if (!trimmedLine || trimmedLine.startsWith('//') || trimmedLine.startsWith('#')) continue;
+        if (!trimmedLine || trimmedLine.startsWith('//') || trimmedLine.startsWith('#')) {
+            captureCurrentLine();
+            continue;
+        }
         
         // Calculate indentation (number of spaces or tabs at start)
         const indentMatch = originalLine.match(/^(\s*)/);
         const indent = indentMatch ? indentMatch[1].length : 0;
-        const indentLevel = Math.floor(indent / 2); // OTUI typically uses 2-space indentation
+        // OTUI typically uses 2-space indentation
+        // Calculate indent level: 0 spaces = level 0, 2 spaces = level 1, 4 spaces = level 2, etc.
+        const indentLevel = Math.floor(indent / 2);
         
         // Pop stack until we find parent with matching or lower indent
+        // This handles both template definitions and regular widgets
         while (stack.length > 0 && stack[stack.length - 1].indentLevel >= indentLevel) {
-            stack.pop();
+            const popped = stack.pop();
+            // If we pop a template definition, we're exiting it
+            if (popped && popped.isTemplate) {
+                inTemplateDefinition = false;
+                templateIndent = -1;
+                templateCaptureStack.pop();
+            }
         }
         
         // Check if this is a widget declaration (starts with capital letter, optionally with inheritance)
@@ -283,103 +411,168 @@ function parseOTUICode(code) {
             const widgetTypeName = widgetMatch[1];
             const parentTypeName = widgetMatch[2]; // Inheritance: parent widget type (e.g., "UICheckBox")
             
-            // If inheritance is specified, use parent type; otherwise try to map the widget name
-            let uiType;
-            let baseType = null;
-            let useOriginalName = false; // Flag to use original name for custom widgets
-            
+            // CRITICAL: If line contains '<', it's a TEMPLATE DEFINITION (style), not a widget instance
+            // Templates should be stored but NOT displayed on canvas (matches OTCv8: importStyleFromOTML)
             if (parentTypeName) {
-                // Widget inherits from parent type (e.g., "CharmItem < UICheckBox" or "BestiaryProgressBar < UIWidget")
+                // This is a template definition (e.g., "CharmItem < UICheckBox")
+                // Store it in templates, but don't add to widgets array for display
+                inTemplateDefinition = true;
+                templateIndent = indent;
+                
                 // Map parent type to UI type
-                baseType = getWidgetTypeFromOTUI(parentTypeName);
+                const baseType = getWidgetTypeFromOTUI(parentTypeName);
+                const uiType = widgetTypeName; // Use original name for template
                 
-                // For custom widgets with inheritance, use the original widget name (not mapped)
-                // This ensures "BestiaryProgressBar < UIWidget" creates "BestiaryProgressBar", not "UIBestiaryProgressBar"
-                useOriginalName = true;
-                uiType = widgetTypeName; // Use original name directly
-            } else {
-                // No inheritance - try to map widget name
-                uiType = getWidgetTypeFromOTUI(widgetTypeName);
-            }
-            
-            // Check if widget type exists (allow dynamic widgets)
-            if (typeof OTUI_WIDGETS !== 'undefined' && !OTUI_WIDGETS[uiType]) {
-                // Try to create a dynamic widget entry if it doesn't exist
-                if (!useOriginalName) {
-                    console.warn(`Widget type not found: ${widgetTypeName} (mapped to ${uiType}). Attempting to create dynamically...`);
-                }
-                
-                // If we have a base type from inheritance, use its properties
-                let baseWidgetDef = null;
-                if (baseType && typeof OTUI_WIDGETS !== 'undefined' && OTUI_WIDGETS[baseType]) {
-                    baseWidgetDef = OTUI_WIDGETS[baseType];
-                }
-                
-                // Infer if it's a container based on name or base type
-                let isContainer = false;
-                if (baseWidgetDef) {
-                    isContainer = baseWidgetDef.isContainer || false;
-                } else {
-                    isContainer = widgetTypeName.includes('Panel') || widgetTypeName.includes('Window') || 
-                                  widgetTypeName.includes('Area') || widgetTypeName.includes('Layout') ||
-                                  widgetTypeName.includes('TabBar') || widgetTypeName.includes('MainWindow') ||
-                                  widgetTypeName.includes('Container') || widgetTypeName.includes('Scroll') ||
-                                  widgetTypeName.includes('Loot') || widgetTypeName.includes('Category');
-                }
-                
-                // Create dynamic widget entry based on parent type if available
-                // Use the original widget name for custom widgets
+                // Create or update template definition in OTUI_WIDGETS
                 if (typeof OTUI_WIDGETS !== 'undefined') {
+                    let baseWidgetDef = null;
+                    if (baseType && OTUI_WIDGETS[baseType]) {
+                        baseWidgetDef = OTUI_WIDGETS[baseType];
+                    }
+                    
+                    // Infer if it's a container based on name or base type
+                    let isContainer = false;
+                    if (baseWidgetDef) {
+                        isContainer = baseWidgetDef.isContainer || false;
+                    } else {
+                        isContainer = widgetTypeName.includes('Panel') || widgetTypeName.includes('Window') || 
+                                      widgetTypeName.includes('Area') || widgetTypeName.includes('Layout') ||
+                                      widgetTypeName.includes('TabBar') || widgetTypeName.includes('MainWindow') ||
+                                      widgetTypeName.includes('Container') || widgetTypeName.includes('Scroll') ||
+                                      widgetTypeName.includes('Loot') || widgetTypeName.includes('Category');
+                    }
+                    
+                    // Store template definition
                     OTUI_WIDGETS[uiType] = {
                         category: baseWidgetDef ? baseWidgetDef.category : (isContainer ? "Layout" : "Display"),
                         isContainer: isContainer,
                         props: baseWidgetDef ? { ...baseWidgetDef.props } : {},
                         events: baseWidgetDef ? { ...baseWidgetDef.events } : {},
-                        importOnly: useOriginalName // Mark as not in palette, but importable and saveable as template
+                        importOnly: true, // Templates are not in palette
+                        isTemplate: true // Mark as template definition
                     };
-                    if (useOriginalName) {
-                        console.log(`✓ Created custom widget group: ${uiType}${baseType ? ` < ${baseType}` : ''} (importable & saveable as template)`);
-                    } else {
-                        console.log(`✓ Created dynamic widget: ${uiType}${baseType ? ` (inherits from ${baseType})` : ''}`);
+                    
+                    const templateCaptureEntry = {
+                        name: widgetTypeName,
+                        baseType: parentTypeName,
+                        lines: []
+                    };
+                    templateDefinitions.push(templateCaptureEntry);
+                    templateCaptureStack.push(templateCaptureEntry);
+                    
+                    // Store template data for later use (when template is instantiated)
+                    templates[uiType] = {
+                        type: uiType,
+                        originalTypeName: widgetTypeName,
+                        parentType: parentTypeName,
+                        baseType: baseType,
+                        indentLevel: indentLevel,
+                        properties: {},
+                        children: [],
+                        isTemplate: true
+                    };
+                    
+                    console.log(`✓ Template definition: ${uiType} < ${baseType} (stored, not displayed)`);
+                    
+                    // Add to stack so children are associated with this template
+                    stack.push(templates[uiType]);
+                    captureCurrentLine(); // Capture template declaration line
+                }
+                continue; // Don't add to widgets array - templates are not displayed
+            } else {
+                // This is an actual widget instance (no '<') - should be displayed
+                // Check if we're inside a template definition
+                if (inTemplateDefinition) {
+                    // This widget is part of the template definition - store it in template, not widgets
+                    const uiType = getWidgetTypeFromOTUI(widgetTypeName);
+                    const widget = {
+                        type: uiType,
+                        originalTypeName: widgetTypeName,
+                        parentType: null,
+                        indentLevel: indentLevel,
+                        properties: {},
+                        children: [],
+                        parent: stack.length > 0 ? stack[stack.length - 1] : null,
+                        isTemplate: false
+                    };
+                    
+                    if (stack.length > 0) {
+                        stack[stack.length - 1].children.push(widget);
                     }
+                    
+                    stack.push(widget);
+                    captureCurrentLine();
+                    continue; // Don't add to widgets array - it's part of template definition
                 } else {
-                    console.error(`Cannot create widget: OTUI_WIDGETS not defined`);
+                    captureCurrentLine();
+                    // This is a root-level widget instance - should be displayed
+                    const uiType = getWidgetTypeFromOTUI(widgetTypeName);
+                    
+                    // Check if widget type exists (allow dynamic widgets)
+                    if (typeof OTUI_WIDGETS !== 'undefined' && !OTUI_WIDGETS[uiType]) {
+                        console.warn(`Widget type not found: ${widgetTypeName} (mapped to ${uiType}). Attempting to create dynamically...`);
+                        
+                        // Infer if it's a container
+                        const isContainer = widgetTypeName.includes('Panel') || widgetTypeName.includes('Window') || 
+                                          widgetTypeName.includes('Area') || widgetTypeName.includes('Layout') ||
+                                          widgetTypeName.includes('TabBar') || widgetTypeName.includes('MainWindow') ||
+                                          widgetTypeName.includes('Container') || widgetTypeName.includes('Scroll');
+                        
+                        OTUI_WIDGETS[uiType] = {
+                            category: isContainer ? "Layout" : "Display",
+                            isContainer: isContainer,
+                            props: {},
+                            events: {},
+                            importOnly: false
+                        };
+                        console.log(`✓ Created dynamic widget: ${uiType}`);
+                    }
+                    
+                    const widget = {
+                        type: uiType,
+                        originalTypeName: widgetTypeName,
+                        parentType: null,
+                        indentLevel: indentLevel,
+                        properties: {},
+                        children: [],
+                        parent: stack.length > 0 ? stack[stack.length - 1] : null,
+                        isTemplate: false
+                    };
+                    
+                    // CRITICAL: Only add to widgets array if it's truly a root widget (indentLevel === 0)
+                    // If stack is empty but indentLevel > 0, this is an error - widget should have a parent
+                    if (indentLevel === 0) {
+                        // Root-level widget (no indentation)
+                        widgets.push(widget);
+                    } else if (stack.length > 0) {
+                        // Child widget - add to parent's children
+                        stack[stack.length - 1].children.push(widget);
+                    } else {
+                        // Error case: widget has indentation but no parent in stack
+                        // This shouldn't happen, but if it does, treat as root widget
+                        console.warn(`Widget ${widgetTypeName} at indent ${indent} has no parent in stack - treating as root widget`);
+                        widgets.push(widget);
+                    }
+                    
+                    stack.push(widget);
                     continue;
                 }
             }
-            
-            const widget = {
-                type: uiType, // This is the name to use for widget creation (original name for custom widgets)
-                originalTypeName: widgetTypeName, // Store original name for reference (same as type for custom widgets)
-                parentType: parentTypeName || null, // Store parent type if inherited
-                indentLevel: indentLevel,
-                properties: {},
-                children: [],
-                parent: stack.length > 0 ? stack[stack.length - 1] : null
-            };
-            
-            if (stack.length > 0) {
-                stack[stack.length - 1].children.push(widget);
-            } else {
-                widgets.push(widget);
-            }
-            
-            stack.push(widget);
-            continue;
         }
         
-        // If no widget in stack, skip this line
-        if (stack.length === 0) {
-            continue;
-        }
+        // Capture non-widget lines within template blocks
+        captureCurrentLine();
+        
+        // If no widget/template in stack, skip this line
+        if (stack.length === 0) continue;
         
         const currentWidget = stack[stack.length - 1];
         
         // Check for property with colon (key: value)
         // Examples: "image-source: /images/ui/button.png", "padding: 5", "!text: Hello"
-        // Match property with colon - allow dots for anchors.right, anchors.left, anchors.verticalCenter, etc.
+        // Allow dots for anchors.right, anchors.left, anchors.verticalCenter, etc.
         // Use case-insensitive matching to handle anchors.verticalCenter, anchors.horizontalCenter, etc.
-        const propMatchColon = trimmedLine.match(/^([!a-zA-Z.-]+):\s*(.+)$/);
+        const propMatchColon = trimmedLine.match(/^([!@a-zA-Z.-]+):\s*(.+)$/);
         if (propMatchColon) {
             const key = propMatchColon[1];
             let value = propMatchColon[2].trim();
@@ -405,16 +598,28 @@ function parseOTUICode(code) {
                 }
             } else if (key === 'image-rect' || key === 'image-clip') {
                 // Store image-rect/image-clip as-is (will be handled by style loader)
-                currentWidget.properties[key] = value;
+                // Only set if not already set (prevent duplicates)
+                if (currentWidget.properties[key] === undefined) {
+                    currentWidget.properties[key] = value;
+                }
             } else if (key.startsWith('anchors.')) {
                 // Handle anchors: anchors.top, anchors.bottom, etc.
-                currentWidget.properties[key] = value;
+                // Only set if not already set (prevent duplicates)
+                if (currentWidget.properties[key] === undefined) {
+                    currentWidget.properties[key] = value;
+                }
             } else if (key.startsWith('!')) {
                 // Properties starting with ! are special (like !text)
                 const actualKey = key.substring(1);
-                currentWidget.properties[actualKey] = value;
+                // Only set if not already set (prevent duplicates)
+                if (currentWidget.properties[actualKey] === undefined) {
+                    currentWidget.properties[actualKey] = value;
+                }
             } else {
-                currentWidget.properties[key] = value;
+                // Only set if not already set (prevent duplicates)
+                if (currentWidget.properties[key] === undefined) {
+                    currentWidget.properties[key] = value;
+                }
             }
             continue;
         }
@@ -423,7 +628,7 @@ function parseOTUICode(code) {
         // Examples: "size 100 50", "image-clip 0 0 32 32", "anchors.right parent.right"
         // Allow dots for anchors.right, anchors.left, anchors.verticalCenter, etc.
         // Use case-insensitive matching to handle anchors.verticalCenter, anchors.horizontalCenter, etc.
-        const propMatchSpace = trimmedLine.match(/^([a-zA-Z.-]+)\s+(.+)$/);
+        const propMatchSpace = trimmedLine.match(/^([@a-zA-Z.-]+)\s+(.+)$/);
         if (propMatchSpace) {
             const key = propMatchSpace[1];
             const value = propMatchSpace[2].trim();
@@ -442,16 +647,28 @@ function parseOTUICode(code) {
                     currentWidget.properties['text-offset-y'] = offsetParts[1];
                 }
             } else if (key === 'image-rect' || key === 'image-clip') {
-                currentWidget.properties[key] = value;
+                // Only set if not already set (prevent duplicates)
+                if (currentWidget.properties[key] === undefined) {
+                    currentWidget.properties[key] = value;
+                }
             } else if (key.startsWith('anchors.')) {
                 // Handle anchors in space-separated format
-                currentWidget.properties[key] = value;
+                // Only set if not already set (prevent duplicates)
+                if (currentWidget.properties[key] === undefined) {
+                    currentWidget.properties[key] = value;
+                }
             } else if (key.startsWith('margin-')) {
                 // Handle margins in space-separated format
-                currentWidget.properties[key] = value;
+                // Only set if not already set (prevent duplicates)
+                if (currentWidget.properties[key] === undefined) {
+                    currentWidget.properties[key] = value;
+                }
             } else {
                 // Store all other properties as-is
-                currentWidget.properties[key] = value;
+                // Only set if not already set (prevent duplicates)
+                if (currentWidget.properties[key] === undefined) {
+                    currentWidget.properties[key] = value;
+                }
             }
             continue;
         }
@@ -469,7 +686,18 @@ function parseOTUICode(code) {
         }
     }
     
-    return widgets;
+    const result = {
+        widgets,
+        templates: templateDefinitions,
+        templateMap: templates
+    };
+    
+    if (typeof window !== 'undefined') {
+        window._importedTemplates = templateDefinitions;
+        window._otuiTemplateMap = templates;
+    }
+    
+    return result;
 }
 
 function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, startY = 50) {
@@ -479,11 +707,43 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
         return [];
     }
     
+    const templateMap = (typeof window !== 'undefined' && window._otuiTemplateMap) || {};
+    
+    function cloneWidgetData(node) {
+        if (!node) return null;
+        return {
+            type: node.type,
+            originalTypeName: node.originalTypeName,
+            parentType: node.parentType,
+            indentLevel: node.indentLevel,
+            properties: { ...node.properties },
+            children: Array.isArray(node.children) ? node.children.map(child => cloneWidgetData(child)) : [],
+            isTemplate: false
+        };
+    }
+    
     const createdWidgets = [];
     let currentY = startY;
     const spacing = 20;
     
     function createWidgetRecursive(widgetData, parent, x, y) {
+        const templateName = widgetData.originalTypeName || widgetData.type;
+        const templateDef = templateMap[templateName];
+        if (templateDef) {
+            if (!widgetData.parentType && templateDef.parentType) {
+                widgetData.parentType = templateDef.parentType;
+            }
+            const templateClone = cloneWidgetData(templateDef);
+            if (templateClone) {
+                widgetData.properties = { ...templateClone.properties, ...widgetData.properties };
+                const templateChildren = templateClone.children || [];
+                widgetData.children = [
+                    ...templateChildren,
+                    ...(widgetData.children || [])
+                ];
+            }
+        }
+        
         // For custom widgets with inheritance (e.g., "CharmItem < UICheckBox"),
         // we need to create the widget using the BASE TYPE, not the custom type name
         // The custom type name is only for code generation
@@ -504,6 +764,7 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
             console.warn(`Failed to create widget: ${widgetTypeToCreate} (for ${widgetData.type})`);
             return null;
         }
+        
         
         // If this is a custom widget with inheritance, store the original type name for code generation
         // The widget will behave like the base type but output the original name in code
@@ -541,74 +802,179 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
         }
         const keyMap = JSON.parse(widget.dataset._keyMap);
         
-        // Preserve original anchors and margins for code generation
-        // This ensures imported anchors are never recalculated/changed
+        // CRITICAL: Preserve ALL original properties (anchors, margins, padding) for code generation
+        // This ensures imported OTUI code maintains its exact properties - NEVER recalculate
         const originalAnchors = [];
         const originalMargins = {};
+        const originalPadding = {};
+        
+        // CRITICAL: Collect ONLY properties that are EXPLICITLY specified in widgetData.properties
+        // Do NOT add default properties - only preserve what was actually in the OTUI code
+        // This ensures we capture all anchor types (left, right, top, bottom, horizontalCenter, verticalCenter, centerIn, fill)
+        // but ONLY if they were explicitly specified in the widget instance
+        // Use a Set to track anchor types to prevent duplicates
+        // CRITICAL: Use case-insensitive matching for anchor types (centerIn, center-in, centerin all map to centerIn)
+        const anchorTypesSeen = new Set();
+        Object.keys(widgetData.properties).forEach(key => {
+            if (key.startsWith('anchors.')) {
+                const value = widgetData.properties[key];
+                // Extract anchor type (e.g., "left" from "anchors.left")
+                const anchorTypeRaw = key.replace('anchors.', '');
+                // Normalize anchor type for duplicate detection (case-insensitive)
+                const anchorTypeNormalized = anchorTypeRaw.toLowerCase().replace(/-/g, '');
+                // Prevent duplicates - if we've already seen this anchor type, skip it
+                // (This handles cases where the same anchor might appear twice in properties)
+                if (!anchorTypesSeen.has(anchorTypeNormalized)) {
+                    anchorTypesSeen.add(anchorTypeNormalized);
+                    // Store in format: "anchors.left: parent.left" for code generation
+                    // CRITICAL: Preserve the original case of the anchor type (centerIn, not centerin)
+                    // But normalize common variations: center-in -> centerIn, centerin -> centerIn
+                    let normalizedKey = key;
+                    if (anchorTypeRaw.toLowerCase() === 'center-in' || anchorTypeRaw.toLowerCase() === 'centerin') {
+                        normalizedKey = 'anchors.centerIn';
+                    } else if (anchorTypeRaw.toLowerCase() === 'horizontal-center' || anchorTypeRaw.toLowerCase() === 'horizontalcenter') {
+                        normalizedKey = 'anchors.horizontalCenter';
+                    } else if (anchorTypeRaw.toLowerCase() === 'vertical-center' || anchorTypeRaw.toLowerCase() === 'verticalcenter') {
+                        normalizedKey = 'anchors.verticalCenter';
+                    }
+                    // Only store anchors that were explicitly in the OTUI code for this widget instance
+                    originalAnchors.push(`${normalizedKey}: ${value}`);
+                } else {
+                    console.warn(`Duplicate anchor ${key} found for widget ${widgetData.type} (${widgetData.properties.id || 'no-id'}), using first occurrence`);
+                }
+            } else if (key.startsWith('margin-')) {
+                const marginType = key.replace('margin-', '');
+                const marginValue = widgetData.properties[key];
+                // Store ALL margins, even if 0 (to preserve exact imported values)
+                if (marginValue !== undefined && marginValue !== null && marginValue !== '') {
+                    originalMargins[marginType] = parseInt(marginValue) || 0;
+                }
+            } else if (key.startsWith('padding-')) {
+                const paddingType = key.replace('padding-', '');
+                const paddingValue = widgetData.properties[key];
+                // Store ALL padding values, even if 0 (to preserve exact imported values)
+                if (paddingValue !== undefined && paddingValue !== null && paddingValue !== '') {
+                    originalPadding[paddingType] = parseInt(paddingValue) || 0;
+                }
+            } else if (key === 'padding') {
+                // Handle single padding value (applies to all sides)
+                const paddingValue = widgetData.properties[key];
+                if (paddingValue !== undefined && paddingValue !== null && paddingValue !== '') {
+                    // Store as a special key to indicate it's a single value
+                    originalPadding['_single'] = paddingValue;
+                }
+            }
+        });
         
         // Debug: Log all properties to verify anchors are present
-        console.log(`Processing widget ${widgetData.type}, properties:`, Object.keys(widgetData.properties));
+        console.log(`Processing widget ${widgetData.type} (${widgetData.properties.id || 'no-id'}), properties:`, Object.keys(widgetData.properties));
+        console.log(`Widget ${widgetData.type} (${widgetData.properties.id || 'no-id'}) - Collected ${originalAnchors.length} anchors from OTUI code:`, originalAnchors);
+        
+        // CRITICAL: Store original size from imported OTUI code to prevent style overrides
+        let importedWidth = null;
+        let importedHeight = null;
+        if (widgetData.properties.width) {
+            importedWidth = parseInt(widgetData.properties.width);
+        }
+        if (widgetData.properties.height) {
+            importedHeight = parseInt(widgetData.properties.height);
+        }
         
         // Apply properties
+        const specialProps = {};
         Object.entries(widgetData.properties).forEach(([key, value]) => {
-            // Handle size properties
+            // Skip size (handled separately)
             if (key === 'width') {
-                widget.style.width = `${value}px`;
+                const sizeValue = parseInt(value);
+                if (!isNaN(sizeValue)) {
+                    widget.style.width = `${sizeValue}px`;
+                    importedWidth = sizeValue;
+                    widget.dataset._importedWidth = sizeValue;
+                }
+                return;
             } else if (key === 'height') {
-                widget.style.height = `${value}px`;
-            } else if (key === 'text' || key === 'title') {
-                // Set text/title content
-                const camelKey = toCamelCase(key);
-                widget.dataset[camelKey] = value;
-                keyMap[camelKey] = key; // Store original key name
-                
-                const contentEl = widget.querySelector('.widget-content');
-                if (contentEl) {
-                    contentEl.textContent = value;
+                const sizeValue = parseInt(value);
+                if (!isNaN(sizeValue)) {
+                    widget.style.height = `${sizeValue}px`;
+                    importedHeight = sizeValue;
+                    widget.dataset._importedHeight = sizeValue;
                 }
-            } else if (key.startsWith('anchors.')) {
-                // Preserve original anchors
-                originalAnchors.push(`${key}: ${value}`);
-                // Also store in dataset for reference
-                const camelKey = toCamelCase(key);
+                return;
+            }
+            
+            // Skip anchors, margins, and padding (handled separately)
+            if (key.startsWith('anchors.') || key.startsWith('margin-') || key.startsWith('padding-') || key === 'padding') {
+                return;
+            }
+
+            // Store event/data bindings separately (e.g., @onClick)
+            if (key.startsWith('@')) {
+                specialProps[key] = value;
+                return;
+            }
+            
+            // Store in dataset for code generation
+            // Convert hyphenated keys to camelCase (dataset requirement)
+            const camelKey = toCamelCase(key);
+            try {
                 widget.dataset[camelKey] = value;
-                keyMap[camelKey] = key;
-            } else if (key.startsWith('margin-')) {
-                // Preserve original margins
-                const marginType = key.replace('margin-', '');
-                originalMargins[marginType] = parseInt(value) || 0;
-                // Also store in dataset
-                const camelKey = toCamelCase(key);
-                widget.dataset[camelKey] = value;
-                keyMap[camelKey] = key;
-            } else {
-                // Store in dataset for code generation
-                // Convert hyphenated keys to camelCase (dataset requirement)
-                const camelKey = toCamelCase(key);
-                try {
-                    widget.dataset[camelKey] = value;
-                    keyMap[camelKey] = key; // Store original key name mapping
-                } catch (e) {
-                    // Fallback: store in a custom attribute if dataset fails
-                    console.warn(`Could not store property '${key}' in dataset, using attribute instead:`, e);
-                    widget.setAttribute(`data-prop-${key.replace(/[^a-z0-9-]/gi, '-')}`, value);
-                    // Store in keyMap with special prefix
-                    keyMap[`attr-${key}`] = key;
-                }
+                keyMap[camelKey] = key; // Store original key name mapping
+            } catch (e) {
+                // Fallback: store in a custom attribute if dataset fails
+                console.warn(`Could not store property '${key}' in dataset, using attribute instead:`, e);
+                widget.setAttribute(`data-prop-${key.replace(/[^a-z0-9-]/gi, '-')}`, value);
+                // Store in keyMap with special prefix
+                keyMap[`attr-${key}`] = key;
             }
         });
         
         // Store original anchors and margins in dataset so code generation uses them
         // CRITICAL: Always store anchors array (even if empty) to distinguish from manually created widgets
-        // This ensures ALL imported anchors (left, right, top, bottom, centerIn, fill, etc.) are preserved
+        // This ensures ALL imported anchors (left, right, top, bottom, centerIn, fill, horizontalCenter, verticalCenter) are preserved
+        // BUT ONLY anchors that were explicitly specified in the OTUI code for this widget instance
+        // Sort anchors to ensure consistent output order (alphabetically by anchor type)
+        originalAnchors.sort();
         widget.dataset._originalAnchors = JSON.stringify(originalAnchors);
-        if (Object.keys(originalMargins).length > 0) {
-            widget.dataset._originalMargins = JSON.stringify(originalMargins);
+        
+        // Always store margins object (even if empty) to ensure consistency
+        widget.dataset._originalMargins = JSON.stringify(originalMargins);
+        
+        // Always store padding object (even if empty) to ensure consistency
+        widget.dataset._originalPadding = JSON.stringify(originalPadding);
+
+        if (Object.keys(specialProps).length > 0) {
+            widget.dataset._specialProps = JSON.stringify(specialProps);
         }
         
+        // Store widget data for recursive anchor updates
+        // Create a clean copy without circular references (remove parent property)
+        const cleanWidgetData = {
+            type: widgetData.type,
+            originalTypeName: widgetData.originalTypeName,
+            parentType: widgetData.parentType,
+            indentLevel: widgetData.indentLevel,
+            properties: { ...widgetData.properties },
+            children: widgetData.children.map(child => ({
+                type: child.type,
+                originalTypeName: child.originalTypeName,
+                parentType: child.parentType,
+                indentLevel: child.indentLevel,
+                properties: { ...child.properties },
+                children: [] // Don't store nested children to avoid deep circular refs
+            }))
+        };
+        widget.dataset._widgetData = JSON.stringify(cleanWidgetData);
+        
         // Debug: Log preserved anchors to verify all are captured
-        console.log(`Widget ${widgetData.type} - Preserved ${originalAnchors.length} anchors:`, originalAnchors);
-        console.log(`Widget ${widgetData.type} - Preserved margins:`, originalMargins);
+        // This should ONLY show anchors that were explicitly in the OTUI code for this widget
+        if (originalAnchors.length > 0) {
+            console.log(`✓ Widget ${widgetData.type} (${widget.id || widgetData.properties.id || 'no-id'}) - Preserved ${originalAnchors.length} anchors from OTUI:`, originalAnchors);
+        } else {
+            console.log(`⚠ Widget ${widgetData.type} (${widget.id || widgetData.properties.id || 'no-id'}) - No anchors specified in OTUI code`);
+        }
+        if (Object.keys(originalMargins).length > 0) {
+            console.log(`  Margins:`, originalMargins);
+        }
         
         // Save key mapping
         widget.dataset._keyMap = JSON.stringify(keyMap);
@@ -619,32 +985,46 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
         }
         
         // Add to parent first (needed for anchor calculations)
-        if (parent && parent.classList && parent.classList.contains('container')) {
+        const content = document.getElementById('editorContent');
+        if (parent && parent.classList && parent.classList.contains('widget')) {
             parent.appendChild(widget);
         } else {
             content.appendChild(widget);
         }
         
-        // Apply anchors to position widget correctly (must be after appending to parent)
-        if (parent && parent.classList && parent.classList.contains('container')) {
-            // Wait for DOM to be ready, then apply anchors
-            requestAnimationFrame(() => {
-                applyAnchorsToWidget(widget, widgetData, parent);
-            });
-        }
-        
         createdWidgets.push(widget);
         
-        // Apply OTUI styles after widget is in DOM and positioned
+        // Apply OTUI styles FIRST (before anchors) to ensure padding is set correctly
+        // This is critical because anchor calculations depend on parent padding
         if (window.OTUIStyleLoader && window.OTUIStyleLoader.applyOTUIStyleToWidget) {
-            requestAnimationFrame(() => {
-                window.OTUIStyleLoader.applyOTUIStyleToWidget(widget, widgetData.type);
-                void widget.offsetHeight; // Force reflow
-                
-                // Re-apply anchors after styles are applied (in case size changed)
-                if (parent && parent.classList && parent.classList.contains('container')) {
-                    applyAnchorsToWidget(widget, widgetData, parent);
+            // Apply styles synchronously if possible, or in next frame
+            window.OTUIStyleLoader.applyOTUIStyleToWidget(widget, widgetData.type);
+            void widget.offsetHeight; // Force reflow
+            
+            // CRITICAL: Restore imported size if it was overridden by styles
+            // This ensures imported OTUI code maintains its exact sizes
+            if (importedWidth !== null && widget.dataset._importedWidth) {
+                const preservedWidth = parseInt(widget.dataset._importedWidth);
+                if (parseInt(widget.style.width) !== preservedWidth) {
+                    widget.style.width = `${preservedWidth}px`;
                 }
+            }
+            if (importedHeight !== null && widget.dataset._importedHeight) {
+                const preservedHeight = parseInt(widget.dataset._importedHeight);
+                if (parseInt(widget.style.height) !== preservedHeight) {
+                    widget.style.height = `${preservedHeight}px`;
+                }
+            }
+        }
+        
+        // Apply anchors AFTER styles are applied (so parent padding is correct)
+        // This ensures anchor calculations use the correct parent padding
+        if (parent && parent.classList && parent.classList.contains('widget')) {
+            // Wait for DOM to be ready and parent styles to be applied
+            requestAnimationFrame(() => {
+                // Clear anchor update map for this widget
+                anchorUpdateMap.delete(widget);
+                applyAnchorsToWidget(widget, widgetData, parent);
             });
         }
         
@@ -674,4 +1054,3 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
 // Export functions
 window.parseOTUICode = parseOTUICode;
 window.createWidgetsFromOTUI = createWidgetsFromOTUI;
-

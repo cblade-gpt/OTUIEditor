@@ -1,4 +1,4 @@
-/* otui_builder.css - 0.0.3 Pre-beta - FULL & COMPLETE */
+/* otui_builder.css - 0.1.0 Beta - FULL & COMPLETE */
 /* 1,100+ LINES - PERFECT DARK THEME - ACCESSIBILITY 100% - OTCv8 READY */
 
 :root {
@@ -357,9 +357,8 @@ body {
 .widget {
     position: absolute;
     /* Default styles - will be overridden by OTUI styles when loaded */
-    background: #2d3748;
-    border: 1px solid var(--border-light);
-    border-radius: var(--radius-md);
+    background: transparent;
+    border: 1px dashed rgba(255, 255, 255, 0.05);
     /* Removed min-width/min-height - OTUI styles will set exact sizes (even 1-3px for separators) */
     cursor: move;
     user-select: none;
@@ -385,6 +384,7 @@ body {
     background: transparent !important;
     border: none !important;
 }
+
 
 .widget:hover {
     box-shadow: var(--shadow-lg);
@@ -447,6 +447,10 @@ body {
     color: white;
     font-size: 9.75px; /* 25% smaller than 13px */
     text-align: center;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
     height: 100%;
     display: flex;
     align-items: center;
@@ -454,6 +458,13 @@ body {
     overflow: hidden;
     /* Ensure OTUI styles can override */
     box-sizing: border-box;
+    pointer-events: none;
+    z-index: 20;
+}
+
+.widget.UILabel .widget-content {
+    position: relative;
+    pointer-events: auto;
 }
 
 /* RESIZE HANDLES */
