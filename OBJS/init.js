@@ -20,8 +20,36 @@ function updateAll() {
     if (typeof updateHierarchyTree === 'function') updateHierarchyTree();
 }
 
+function notifyAssetsMissing(action, missing) {
+    const message = `Please load OTUI ${missing} (Settings > Styles & Images) before ${action}.`;
+    if (typeof showToast === 'function') {
+        showToast(message);
+    } else if (window?.alert) {
+        alert(message);
+    } else {
+        console.warn(message);
+    }
+}
+
+function ensureAssetsLoaded(action = 'using the editor', requireImages = true) {
+    if (!window._stylesLoaded) {
+        notifyAssetsMissing(action, 'styles');
+        return false;
+    }
+    if (requireImages && !window._imagesLoaded) {
+        notifyAssetsMissing(action, 'images');
+        return false;
+    }
+    return true;
+}
+
+window.ensureAssetsLoaded = ensureAssetsLoaded;
+
 function handleDrop(e) {
     e.preventDefault();
+    if (!ensureAssetsLoaded('adding widgets')) {
+        return;
+    }
     const type = e.dataTransfer.getData('text/plain');
     if (!OTUI_WIDGETS[type]) return;
 
@@ -465,6 +493,9 @@ window.initOTUIBuilder = function() {
         
         // Apply generated code to canvas
         bind('aiApplyCodeBtn', () => {
+            if (!ensureAssetsLoaded('applying generated code')) {
+                return;
+            }
             const code = window._lastGeneratedCode;
             if (!code) {
                 showToast('No code to apply');
@@ -921,6 +952,10 @@ window.initOTUIBuilder = function() {
             const file = e.target.files[0];
             if (!file || !file.name.endsWith('.otui')) {
                 showToast('Please select a valid .otui file');
+                return;
+            }
+            
+            if (!ensureAssetsLoaded('importing OTUI files')) {
                 return;
             }
             

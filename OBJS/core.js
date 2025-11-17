@@ -6,8 +6,27 @@ let snapToGrid = true;
 let showGrid = true;
 let clipboardWidget = null;
 
+function assetsReady(action) {
+    if (window.ensureAssetsLoaded) {
+        return window.ensureAssetsLoaded(action);
+    }
+    const stylesReady = !!window._stylesLoaded;
+    const imagesReady = !!window._imagesLoaded;
+    if (stylesReady && imagesReady) return true;
+    const missing = !stylesReady ? 'styles' : 'images';
+    if (window.showToast) {
+        window.showToast(`Please load OTUI ${missing} before ${action}. Use Settings > Styles.`);
+    } else {
+        console.warn(`Missing OTUI ${missing}. Cannot proceed with ${action}.`);
+    }
+    return false;
+}
+
 // Move function definitions to the top for explicit ordering
 function startDrag(widget, e) {
+    if (!assetsReady('dragging widgets')) {
+        return;
+    }
     e.stopPropagation(); // Prevent parent widgets from receiving the event
     
     dragWidget = widget;
@@ -215,6 +234,9 @@ function startDrag(widget, e) {
 }
 
 function startResize(widget, dir, e) {
+    if (!assetsReady('resizing widgets')) {
+        return;
+    }
     e.stopPropagation();
     const startX = e.clientX, startY = e.clientY;
     const startW = widget.offsetWidth, startH = widget.offsetHeight;
@@ -303,6 +325,9 @@ function setZoom(level) {
 }
 
 function createWidget(type) {
+    if (!assetsReady('creating widgets')) {
+        return null;
+    }
     const def = OTUI_WIDGETS[type];
     if (!def) return null;
 

@@ -276,9 +276,14 @@ function generateOTUICode() {
 
         // Size property - include for all widgets (width and height)
         // Always include size property for proper widget dimensions
-        const widgetWidth = widget.offsetWidth || parseInt(widget.style.width) || 400;
-        const widgetHeight = widget.offsetHeight || parseInt(widget.style.height) || 300;
-        code += `${indent}  size: ${widgetWidth} ${widgetHeight}\n`;
+        const isImportedWidget = widget.dataset._originalAnchors !== undefined;
+        const importedSizeDefined = widget.dataset._originalSizeDefined === 'true';
+        const shouldOutputSize = !isImportedWidget || importedSizeDefined;
+        if (shouldOutputSize) {
+            const widgetWidth = widget.offsetWidth || parseInt(widget.style.width) || 400;
+            const widgetHeight = widget.offsetHeight || parseInt(widget.style.height) || 300;
+            code += `${indent}  size: ${widgetWidth} ${widgetHeight}\n`;
+        }
         
         // Output preserved special properties (e.g., @onClick)
         if (widget.dataset._specialProps) {

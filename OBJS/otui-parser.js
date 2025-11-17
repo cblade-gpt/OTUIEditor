@@ -492,6 +492,7 @@ function parseOTUICode(code) {
                         indentLevel: indentLevel,
                         properties: {},
                         children: [],
+                        sizeDefined: false,
                         parent: stack.length > 0 ? stack[stack.length - 1] : null,
                         isTemplate: false
                     };
@@ -535,6 +536,7 @@ function parseOTUICode(code) {
                         indentLevel: indentLevel,
                         properties: {},
                         children: [],
+                        sizeDefined: false,
                         parent: stack.length > 0 ? stack[stack.length - 1] : null,
                         isTemplate: false
                     };
@@ -589,6 +591,7 @@ function parseOTUICode(code) {
                 if (sizeParts.length >= 2) {
                     currentWidget.properties['width'] = sizeParts[0];
                     currentWidget.properties['height'] = sizeParts[1];
+                    currentWidget.sizeDefined = true;
                 }
             } else if (key === 'text-offset') {
                 const offsetParts = value.split(/\s+/);
@@ -639,6 +642,7 @@ function parseOTUICode(code) {
                 if (sizeParts.length >= 2) {
                     currentWidget.properties['width'] = sizeParts[0];
                     currentWidget.properties['height'] = sizeParts[1];
+                    currentWidget.sizeDefined = true;
                 }
             } else if (key === 'text-offset') {
                 const offsetParts = value.split(/\s+/);
@@ -941,6 +945,7 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
         
         // Always store padding object (even if empty) to ensure consistency
         widget.dataset._originalPadding = JSON.stringify(originalPadding);
+        widget.dataset._originalSizeDefined = widgetData.sizeDefined ? 'true' : 'false';
 
         if (Object.keys(specialProps).length > 0) {
             widget.dataset._specialProps = JSON.stringify(specialProps);
@@ -954,12 +959,14 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
             parentType: widgetData.parentType,
             indentLevel: widgetData.indentLevel,
             properties: { ...widgetData.properties },
+            sizeDefined: widgetData.sizeDefined || false,
             children: widgetData.children.map(child => ({
                 type: child.type,
                 originalTypeName: child.originalTypeName,
                 parentType: child.parentType,
                 indentLevel: child.indentLevel,
                 properties: { ...child.properties },
+                sizeDefined: child.sizeDefined || false,
                 children: [] // Don't store nested children to avoid deep circular refs
             }))
         };

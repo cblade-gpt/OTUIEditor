@@ -525,6 +525,12 @@ async function loadAllStyles() {
     const totalStyles = Object.keys(loadedStyles).length;
     const styleNames = Object.keys(loadedStyles);
     console.log(`Total loaded styles: ${totalStyles}`);
+    if (typeof window !== 'undefined' && totalStyles > 0) {
+        window._stylesLoaded = true;
+    }
+    if (typeof window !== 'undefined' && totalStyles > 0) {
+        window._stylesLoaded = true;
+    }
     if (totalStyles > 0) {
         console.log('Sample style names:', styleNames.slice(0, 20).join(', '), totalStyles > 20 ? '...' : '');
         // Show important styles
@@ -1664,6 +1670,11 @@ async function loadImageFiles(files) {
     
     console.log(`✓ Loaded ${loaded.length} image(s) into cache`);
     console.log(`Sample cached paths:`, Object.keys(imageCache).slice(0, 5));
+    
+    if (typeof window !== 'undefined' && loaded.length > 0) {
+        window._imagesLoaded = true;
+    }
+    
     return loaded;
 }
 
@@ -1790,6 +1801,11 @@ async function loadOTUIFilesFromFiles(files) {
             }
         }
     }
+    
+    if (typeof window !== 'undefined' && loaded.length > 0) {
+        window._stylesLoaded = true;
+    }
+    
     return loaded;
 }
 
