@@ -150,19 +150,24 @@ function generateOTUICode() {
             code += `${indent}  id: ${id}\n`;
         }
 
+        // Track properties we've already output to avoid duplicates
+        const suppressedCommonProps = new Set();
+
         // Include title/text if set, or if it's a root widget with a title property
         const title = getDatasetValue(widget, 'title');
         const text = getDatasetValue(widget, 'text');
         if (title) {
             code += `${indent}  !text: ${formatTranslationValue(title)}\n`;
+            suppressedCommonProps.add('text');
         } else if (isRoot && text) {
             code += `${indent}  !text: ${formatTranslationValue(text)}\n`;
+            suppressedCommonProps.add('text');
         }
 
         // Common OTUI styling properties that should be included in code generation
         // Note: margins are handled by calculateAnchors (visual positioning)
         const commonProperties = ['visible', 'enabled', 'focusable', 'opacity', 'color', 'background',
-            'font', 'text-align', 'text-offset-x', 'text-offset-y', 'image-source', 'image-color'];
+            'font', 'text', 'text-align', 'text-offset-x', 'text-offset-y', 'image-source', 'image-color'];
         
         // Generate widget-specific properties
         if (def.props) {
@@ -202,6 +207,9 @@ function generateOTUICode() {
         // Generate common properties if they differ from defaults
         let textOffsetHandled = false; // Track if text-offset was already output
         commonProperties.forEach(k => {
+            if (suppressedCommonProps.has(k)) {
+                return;
+            }
             // Skip text-offset-x/y if we've already handled text-offset
             if (textOffsetHandled && (k === 'text-offset-x' || k === 'text-offset-y')) {
                 return;
@@ -222,6 +230,7 @@ function generateOTUICode() {
                     'color': '',
                     'background': '',
                     'font': '',
+                    'text': '',
                     'text-align': '',
                     'text-offset-x': '0',
                     'text-offset-y': '0',
@@ -261,7 +270,9 @@ function generateOTUICode() {
                         return; // Skip individual x/y output
                     }
                     
-                    if (k === 'visible' || k === 'enabled' || k === 'focusable') {
+                    if (propertyName.startsWith('!')) {
+                        formattedValue = formatTranslationValue(val);
+                    } else if (k === 'visible' || k === 'enabled' || k === 'focusable') {
                         formattedValue = (val === 'true' || val === true) ? 'true' : 'false';
                     } else if (k === 'opacity') {
                         formattedValue = val; // Number
