@@ -377,8 +377,27 @@ body {
     box-shadow: none !important;
     padding: 0 !important;
     border-radius: 0 !important;
+    min-height: 20px !important;
+    max-height: 20px !important;
+    height: auto !important;
 }
 
+.widget.UIGameLabel {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+    min-height: 20px !important;
+    max-height: 20px !important;
+    height: auto !important;
+}
+
+.widget.UITextEdit {
+    min-height: 20px !important;
+    max-height: 20px !important;
+    height: auto !important;
+}
 .widget.UILabel .widget-content {
     padding: 0 !important;
     background: transparent !important;
