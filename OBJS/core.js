@@ -5,6 +5,10 @@ let zoomLevel = 1;
 let snapToGrid = true;
 let showGrid = true;
 let clipboardWidget = null;
+let arrowNudgeInterval = null;
+let arrowNudgeKey = null;
+let arrowNudgeStartTime = 0;
+let arrowNudgeMoved = false;
 
 function formatDisplayText(value) {
     if (value === null || value === undefined) return '';
@@ -371,6 +375,39 @@ function setZoom(level) {
     document.getElementById('zoomLevel').textContent = `${Math.round(zoomLevel * 100)}%`;
 }
 
+function isTypingInInput(target) {
+    if (!target) return false;
+    const editableSelector = 'input, textarea, select, [contenteditable="true"]';
+    return target.closest(editableSelector) !== null;
+}
+
+function clampPositionToParent(widget, proposedLeft, proposedTop) {
+    const parent = widget.parentElement;
+    if (!parent || parent.id === 'editorContent' || !parent.classList.contains('container')) {
+        return {
+            left: Math.max(0, proposedLeft),
+            top: Math.max(0, proposedTop)
+        };
+    }
+    
+    const parentStyle = window.getComputedStyle(parent);
+    const padLeft = parseInt(parentStyle.paddingLeft) || 0;
+    const padTop = parseInt(parentStyle.paddingTop) || 0;
+    const padRight = parseInt(parentStyle.paddingRight) || 0;
+    const padBottom = parseInt(parentStyle.paddingBottom) || 0;
+    const contentWidth = parent.offsetWidth - padLeft - padRight;
+    const contentHeight = parent.offsetHeight - padTop - padBottom;
+    const maxLeft = Math.max(0, contentWidth - widget.offsetWidth) + padLeft;
+    const maxTop = Math.max(0, contentHeight - widget.offsetHeight) + padTop;
+    const minLeft = padLeft ? padLeft : 0;
+    const minTop = padTop ? padTop : 0;
+    
+    return {
+        left: Math.max(minLeft, Math.min(proposedLeft, maxLeft)),
+        top: Math.max(minTop, Math.min(proposedTop, maxTop))
+    };
+}
+
 function createWidget(type) {
     if (!assetsReady('creating widgets')) {
         return null;
@@ -495,16 +532,25 @@ function createWidget(type) {
 
 function deleteWidget(widget) {
     if (!widget) return;
-    // Only delete the exact widget, never delete parent containers
-    // Ensure widget is actually in the DOM before removing
-    if (widget.parentNode) {
-        widget.remove();
-        if (selectedWidget === widget) {
-            selectWidget(null);
-        }
-        saveState();
-        updateAll();
+    if (!widget.parentNode) return;
+    
+    let multiSelectedWidgets = window.__multiSelectedWidgets;
+    if (!multiSelectedWidgets) {
+        multiSelectedWidgets = new Set();
+        window.__multiSelectedWidgets = multiSelectedWidgets;
     }
+    const survivors = Array.from(multiSelectedWidgets).filter(w => w !== widget);
+    widget.remove();
+    multiSelectedWidgets.clear();
+    survivors.forEach(w => multiSelectedWidgets.add(w));
+    
+    selectWidget(null);
+    survivors.forEach((w, index) => {
+        selectWidget(w, { append: index > 0 });
+    });
+    
+    saveState();
+    updateAll();
 }
 
 function copyWidget(widget) {
@@ -644,3 +690,162 @@ function duplicateWidget(widget) {
     copyWidget(widget);
     pasteWidget();
 }
+
+function performArrowNudge(key, isInitialTick) {
+    if (!selectedWidget) return;
+    const parent = selectedWidget.parentElement;
+    if (!parent) return;
+    
+    const elapsed = Math.max(0, performance.now() - arrowNudgeStartTime);
+    const multiplier = Math.pow(2, Math.floor(elapsed / 2000));
+    const step = isInitialTick ? 1 : Math.min(32, Math.max(1, multiplier));
+    
+    let left = parseInt(selectedWidget.style.left) || 0;
+    let top = parseInt(selectedWidget.style.top) || 0;
+    
+    switch (key) {
+        case 'ArrowUp':
+            top -= step;
+            break;
+        case 'ArrowDown':
+            top += step;
+            break;
+        case 'ArrowLeft':
+            left -= step;
+            break;
+        case 'ArrowRight':
+            left += step;
+            break;
+        default:
+            return;
+    }
+    
+    const clamped = clampPositionToParent(selectedWidget, left, top);
+    selectedWidget.style.left = `${clamped.left}px`;
+    selectedWidget.style.top = `${clamped.top}px`;
+    
+    if (selectedWidget.dataset._originalAnchors !== undefined) {
+        delete selectedWidget.dataset._originalAnchors;
+        delete selectedWidget.dataset._originalMargins;
+    }
+    if (selectedWidget.dataset._originalPropertyList !== undefined) {
+        delete selectedWidget.dataset._originalPropertyList;
+    }
+    
+    arrowNudgeMoved = true;
+}
+
+function stopArrowNudge(shouldSave) {
+    if (arrowNudgeInterval) {
+        clearInterval(arrowNudgeInterval);
+        arrowNudgeInterval = null;
+    }
+    arrowNudgeKey = null;
+    if (shouldSave && arrowNudgeMoved) {
+        saveState();
+        updateAll();
+    }
+    arrowNudgeStartTime = 0;
+    arrowNudgeMoved = false;
+}
+
+function getWidgetCenter(widget) {
+    const rect = widget.getBoundingClientRect();
+    return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2
+    };
+}
+
+function directionalScore(dx, dy, direction) {
+    let primary = 0;
+    switch (direction) {
+        case 'right':
+            primary = dx;
+            break;
+        case 'left':
+            primary = -dx;
+            break;
+        case 'down':
+            primary = dy;
+            break;
+        case 'up':
+            primary = -dy;
+            break;
+    }
+    if (primary <= 2) {
+        return Infinity;
+    }
+    const secondary = (direction === 'left' || direction === 'right') ? Math.abs(dy) : Math.abs(dx);
+    return primary * primary * 1000 + secondary;
+}
+
+function findNearestWidgetInDirection(sourceWidget, directionKey) {
+    if (!sourceWidget) return null;
+    const direction = directionKey.replace('Arrow', '').toLowerCase();
+    const widgets = Array.from(document.querySelectorAll('#editorContent .widget'));
+    const sourceCenter = getWidgetCenter(sourceWidget);
+    let bestWidget = null;
+    let bestScore = Infinity;
+    
+    widgets.forEach(widget => {
+        if (widget === sourceWidget) return;
+        const c = getWidgetCenter(widget);
+        const dx = c.x - sourceCenter.x;
+        const dy = c.y - sourceCenter.y;
+        const score = directionalScore(dx, dy, direction);
+        if (score < bestScore) {
+            bestScore = score;
+            bestWidget = widget;
+        }
+    });
+    
+    return bestWidget;
+}
+
+function handleDirectionalSelection(key, append) {
+    const target = findNearestWidgetInDirection(selectedWidget, key);
+    if (!target) return;
+    selectWidget(target, { append });
+}
+
+document.addEventListener('keydown', e => {
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    
+    if (e.ctrlKey) {
+        if (!selectedWidget || isTypingInInput(e.target)) return;
+        e.preventDefault();
+        handleDirectionalSelection(e.key, true);
+        return;
+    }
+    
+    if (e.shiftKey) {
+        if (!selectedWidget || isTypingInInput(e.target)) return;
+        e.preventDefault();
+        handleDirectionalSelection(e.key, false);
+        return;
+    }
+    
+    if (!selectedWidget || isTypingInInput(e.target)) return;
+    
+    e.preventDefault();
+    
+    if (!arrowNudgeInterval) {
+        arrowNudgeStartTime = performance.now();
+        arrowNudgeInterval = setInterval(() => {
+            if (!arrowNudgeKey || !selectedWidget) {
+                stopArrowNudge(true);
+                return;
+            }
+            performArrowNudge(arrowNudgeKey, false);
+        }, 80);
+    }
+    
+    arrowNudgeKey = e.key;
+    performArrowNudge(e.key, true);
+});
+
+document.addEventListener('keyup', e => {
+    if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+    stopArrowNudge(true);
+});

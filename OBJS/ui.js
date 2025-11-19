@@ -1,17 +1,52 @@
 // OBJS/ui.js
-function selectWidget(widget) {
-    document.querySelectorAll('.widget.selected').forEach(w => w.classList.remove('selected'));
-    if (widget) widget.classList.add('selected');
-    selectedWidget = widget;
+const multiSelectedWidgets = window.__multiSelectedWidgets || new Set();
+window.__multiSelectedWidgets = multiSelectedWidgets;
+
+function getSelectedWidgets() {
+    return Array.from(multiSelectedWidgets);
+}
+window.getSelectedWidgets = getSelectedWidgets;
+
+function selectWidget(widget, options = {}) {
+    const append = options.append === true;
+    
+    if (!append) {
+        multiSelectedWidgets.forEach(w => w.classList.remove('selected'));
+        multiSelectedWidgets.clear();
+    }
+    
+    if (widget) {
+        multiSelectedWidgets.add(widget);
+        widget.classList.add('selected');
+        selectedWidget = widget;
+    } else if (!append) {
+        selectedWidget = null;
+    }
+
     updatePropertyEditor();
     updateHierarchyTree();
-    document.getElementById('selectedWidgetBadge').textContent = widget ? widget.dataset.type : 'No Selection';
+    const selectionCount = multiSelectedWidgets.size;
+    const badge = document.getElementById('selectedWidgetBadge');
+    if (badge) {
+        if (widget) {
+            const extra = selectionCount > 1 ? ` (+${selectionCount - 1})` : '';
+            badge.textContent = `${widget.dataset.type}${extra}`;
+        } else {
+            badge.textContent = 'No Selection';
+        }
+    }
     const ind = document.getElementById('editingIndicator');
     if (ind) ind.style.display = widget ? 'block' : 'none';
-    if (widget) document.getElementById('editingWidgetType').textContent = widget.dataset.type.replace('UI', '');
+    if (widget) {
+        document.getElementById('editingWidgetType').textContent = widget.dataset.type.replace('UI', '');
+    }
     
     // Show tooltip with widget properties
-    showWidgetTooltip(widget);
+    if (widget) {
+        showWidgetTooltip(widget);
+    } else {
+        hideWidgetTooltip();
+    }
 }
 
 function showWidgetTooltip(widget) {
@@ -82,7 +117,7 @@ function updateHierarchyTree() {
 
     function buildNode(w) {
         const node = document.createElement('div');
-        node.className = 'tree-node' + (w === selectedWidget ? ' selected' : '');
+        node.className = 'tree-node' + (multiSelectedWidgets.has(w) ? ' selected' : '');
         const input = document.createElement('input');
         input.value = w.id;
         input.onchange = () => { w.id = input.value; updateAll(); };

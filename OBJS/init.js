@@ -195,7 +195,7 @@ window.initOTUIBuilder = function() {
         setupCodeTabs(codeModal);
     }
     
-    console.log('OTUI Builder 0.1.0 Beta — INITIALIZING...');
+    console.log('OTUI Builder 0.1.1 Beta — INITIALIZING...');
 
     populateWidgetPalette();
     
@@ -1078,8 +1078,8 @@ window.initOTUIBuilder = function() {
     
     saveState();
     updateAll();
-    showToast('OTUI Builder 0.1.0 Beta — READY!');
-    console.log('OTUI Builder 0.1.0 Beta — READY!');
+    showToast('OTUI Builder 0.1.1 Beta — READY! (Please Load Styles/Images UI from Settings to start)');
+    console.log('OTUI Builder 0.1.1 Beta — READY!');
     console.log('Keyboard shortcuts: Ctrl+Z (undo), Ctrl+Y/Ctrl+Shift+Z (redo), Del/Backspace (delete), Ctrl+C (copy), Ctrl+V (paste), Ctrl+D (duplicate)');
     
     // Initialize right sidebar resize functionality
