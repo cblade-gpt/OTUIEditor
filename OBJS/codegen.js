@@ -150,19 +150,40 @@ function generateOTUICode() {
             code += `${indent}  id: ${id}\n`;
         }
 
-        // Track properties we've already output to avoid duplicates
-        const suppressedCommonProps = new Set();
+        let sizeAlreadyDefined = false;
+        let originalPropertyList = null;
+        let usingOriginalPropertyList = false;
+        let originalPropertyListIncludesMargins = false;
 
-        // Include title/text if set, or if it's a root widget with a title property
-        const title = getDatasetValue(widget, 'title');
-        const text = getDatasetValue(widget, 'text');
-        if (title) {
-            code += `${indent}  !text: ${formatTranslationValue(title)}\n`;
-            suppressedCommonProps.add('text');
-        } else if (isRoot && text) {
-            code += `${indent}  !text: ${formatTranslationValue(text)}\n`;
-            suppressedCommonProps.add('text');
+        if (widget.dataset._originalPropertyList) {
+            try {
+                const parsed = JSON.parse(widget.dataset._originalPropertyList);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    originalPropertyList = parsed;
+                    usingOriginalPropertyList = true;
+                }
+            } catch (e) {
+                console.warn('Failed to parse original property list:', e);
+            }
         }
+
+        if (!usingOriginalPropertyList) {
+            const propertiesOutput = new Set(['id']);
+            // Track properties we've already output to avoid duplicates
+            const suppressedCommonProps = new Set();
+
+            // Include title/text if set, or if it's a root widget with a title property
+            const title = getDatasetValue(widget, 'title');
+            const text = getDatasetValue(widget, 'text');
+            if (title) {
+                code += `${indent}  !text: ${formatTranslationValue(title)}\n`;
+                suppressedCommonProps.add('text');
+                propertiesOutput.add('!text');
+            } else if (isRoot && text) {
+                code += `${indent}  !text: ${formatTranslationValue(text)}\n`;
+                suppressedCommonProps.add('text');
+                propertiesOutput.add('!text');
+            }
 
         // Common OTUI styling properties that should be included in code generation
         // Note: margins are handled by calculateAnchors (visual positioning)
@@ -201,6 +222,10 @@ function generateOTUICode() {
             }
             
                 code += `${indent}  ${k}: ${formattedValue}\n`;
+                propertiesOutput.add(k);
+                if (k === 'size' || k === 'width' || k === 'height') {
+                    sizeAlreadyDefined = true;
+                }
             });
         }
         
@@ -281,15 +306,35 @@ function generateOTUICode() {
                         formattedValue = val;
                     }
                     code += `${indent}  ${propertyName}: ${formattedValue}\n`;
+                    propertiesOutput.add(propertyName);
                 }
             }
         });
+
+        } else if (originalPropertyList) {
+            originalPropertyList.forEach(entry => {
+                if (!entry || !entry.raw) return;
+                const key = entry.key || '';
+                if (key === 'id') {
+                    return;
+                }
+                if (key === 'size' || key === 'width' || key === 'height') {
+                    sizeAlreadyDefined = true;
+                }
+                if (key && (key === 'margin' || key.startsWith('margin-'))) {
+                    originalPropertyListIncludesMargins = true;
+                }
+                const extraIndent = Math.max(0, entry.indent || 0);
+                const indentPrefix = indent + '  ' + '  '.repeat(extraIndent);
+                code += `${indentPrefix}${entry.raw}\n`;
+            });
+        }
 
         // Size property - include for all widgets (width and height)
         // Always include size property for proper widget dimensions
         const isImportedWidget = widget.dataset._originalAnchors !== undefined;
         const importedSizeDefined = widget.dataset._originalSizeDefined === 'true';
-        const shouldOutputSize = !isImportedWidget || importedSizeDefined;
+        const shouldOutputSize = (!isImportedWidget || importedSizeDefined) && !sizeAlreadyDefined;
         if (shouldOutputSize) {
             const widgetWidth = widget.offsetWidth || parseInt(widget.style.width) || 400;
             const widgetHeight = widget.offsetHeight || parseInt(widget.style.height) || 300;
@@ -297,7 +342,7 @@ function generateOTUICode() {
         }
         
         // Output preserved special properties (e.g., @onClick)
-        if (widget.dataset._specialProps) {
+        if (!usingOriginalPropertyList && widget.dataset._specialProps) {
             try {
                 const specialProps = JSON.parse(widget.dataset._specialProps);
                 Object.entries(specialProps).forEach(([propKey, propValue]) => {
@@ -333,7 +378,7 @@ function generateOTUICode() {
                 }
                 
                 // Output margins as additional offsets (anchors define position, margins are offsets)
-                if (originalMargins) {
+                if (originalMargins && !originalPropertyListIncludesMargins) {
                     try {
                         const margins = JSON.parse(originalMargins);
                         if (margins.left !== undefined && margins.left !== 0) {

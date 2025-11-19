@@ -365,6 +365,19 @@ function parseOTUICode(code) {
     let inTemplateDefinition = false; // Track if we're inside a template definition
     let templateIndent = -1; // Track indentation level of current template
     
+    function recordOriginalProperty(targetWidget, key, value, rawLine, relativeIndent = 0) {
+        if (!targetWidget || !key) return;
+        if (!targetWidget.propertyList) {
+            targetWidget.propertyList = [];
+        }
+        targetWidget.propertyList.push({
+            key,
+            value,
+            raw: rawLine,
+            indent: Math.max(0, relativeIndent)
+        });
+    }
+    
     for (let i = 0; i < lines.length; i++) {
         const originalLine = lines[i];
         const trimmedLine = originalLine.trim();
@@ -469,6 +482,8 @@ function parseOTUICode(code) {
                         indentLevel: indentLevel,
                         properties: {},
                         children: [],
+                        propertyList: [],
+                        originalKeys: {},
                         isTemplate: true
                     };
                     
@@ -493,6 +508,8 @@ function parseOTUICode(code) {
                         properties: {},
                         children: [],
                         sizeDefined: false,
+                        propertyList: [],
+                        originalKeys: {},
                         parent: stack.length > 0 ? stack[stack.length - 1] : null,
                         isTemplate: false
                     };
@@ -537,6 +554,8 @@ function parseOTUICode(code) {
                         properties: {},
                         children: [],
                         sizeDefined: false,
+                        propertyList: [],
+                        originalKeys: {},
                         parent: stack.length > 0 ? stack[stack.length - 1] : null,
                         isTemplate: false
                     };
@@ -574,10 +593,11 @@ function parseOTUICode(code) {
         // Examples: "image-source: /images/ui/button.png", "padding: 5", "!text: Hello"
         // Allow dots for anchors.right, anchors.left, anchors.verticalCenter, etc.
         // Use case-insensitive matching to handle anchors.verticalCenter, anchors.horizontalCenter, etc.
-        const propMatchColon = trimmedLine.match(/^([!@a-zA-Z.-]+):\s*(.+)$/);
+        const propMatchColon = trimmedLine.match(/^([!@a-zA-Z.-]+):\s*(.*)$/);
         if (propMatchColon) {
             const key = propMatchColon[1];
             let value = propMatchColon[2].trim();
+            const relativeIndent = Math.max(0, indentLevel - currentWidget.indentLevel - 1);
             
             // Remove quotes if present
             if ((value.startsWith('"') && value.endsWith('"')) || 
@@ -593,23 +613,27 @@ function parseOTUICode(code) {
                     currentWidget.properties['height'] = sizeParts[1];
                     currentWidget.sizeDefined = true;
                 }
+                recordOriginalProperty(currentWidget, 'size', propMatchColon[2].trim(), trimmedLine, relativeIndent);
             } else if (key === 'text-offset') {
                 const offsetParts = value.split(/\s+/);
                 if (offsetParts.length >= 2) {
                     currentWidget.properties['text-offset-x'] = offsetParts[0];
                     currentWidget.properties['text-offset-y'] = offsetParts[1];
                 }
+                recordOriginalProperty(currentWidget, 'text-offset', propMatchColon[2].trim(), trimmedLine, relativeIndent);
             } else if (key === 'image-rect' || key === 'image-clip') {
                 // Store image-rect/image-clip as-is (will be handled by style loader)
                 // Only set if not already set (prevent duplicates)
                 if (currentWidget.properties[key] === undefined) {
                     currentWidget.properties[key] = value;
+                    recordOriginalProperty(currentWidget, key, propMatchColon[2].trim(), trimmedLine, relativeIndent);
                 }
             } else if (key.startsWith('anchors.')) {
                 // Handle anchors: anchors.top, anchors.bottom, etc.
                 // Only set if not already set (prevent duplicates)
                 if (currentWidget.properties[key] === undefined) {
                     currentWidget.properties[key] = value;
+                    recordOriginalProperty(currentWidget, key, propMatchColon[2].trim(), trimmedLine, relativeIndent);
                 }
             } else if (key.startsWith('!')) {
                 // Properties starting with ! are special (like !text)
@@ -617,11 +641,20 @@ function parseOTUICode(code) {
                 // Only set if not already set (prevent duplicates)
                 if (currentWidget.properties[actualKey] === undefined) {
                     currentWidget.properties[actualKey] = value;
+                    currentWidget.originalKeys = currentWidget.originalKeys || {};
+                    currentWidget.originalKeys[actualKey] = key;
+                    recordOriginalProperty(currentWidget, key, propMatchColon[2].trim(), trimmedLine, relativeIndent);
+                }
+            } else if (key.startsWith('@')) {
+                if (currentWidget.properties[key] === undefined) {
+                    currentWidget.properties[key] = value;
+                    recordOriginalProperty(currentWidget, key, propMatchColon[2].trim(), trimmedLine, relativeIndent);
                 }
             } else {
                 // Only set if not already set (prevent duplicates)
                 if (currentWidget.properties[key] === undefined) {
                     currentWidget.properties[key] = value;
+                    recordOriginalProperty(currentWidget, key, propMatchColon[2].trim(), trimmedLine, relativeIndent);
                 }
             }
             continue;
@@ -635,6 +668,7 @@ function parseOTUICode(code) {
         if (propMatchSpace) {
             const key = propMatchSpace[1];
             const value = propMatchSpace[2].trim();
+            const relativeIndent = Math.max(0, indentLevel - currentWidget.indentLevel - 1);
             
             // Handle special properties
             if (key === 'size') {
@@ -644,34 +678,40 @@ function parseOTUICode(code) {
                     currentWidget.properties['height'] = sizeParts[1];
                     currentWidget.sizeDefined = true;
                 }
+                recordOriginalProperty(currentWidget, 'size', value, trimmedLine, relativeIndent);
             } else if (key === 'text-offset') {
                 const offsetParts = value.split(/\s+/);
                 if (offsetParts.length >= 2) {
                     currentWidget.properties['text-offset-x'] = offsetParts[0];
                     currentWidget.properties['text-offset-y'] = offsetParts[1];
                 }
+                recordOriginalProperty(currentWidget, 'text-offset', value, trimmedLine, relativeIndent);
             } else if (key === 'image-rect' || key === 'image-clip') {
                 // Only set if not already set (prevent duplicates)
                 if (currentWidget.properties[key] === undefined) {
                     currentWidget.properties[key] = value;
+                    recordOriginalProperty(currentWidget, key, value, trimmedLine, relativeIndent);
                 }
             } else if (key.startsWith('anchors.')) {
                 // Handle anchors in space-separated format
                 // Only set if not already set (prevent duplicates)
                 if (currentWidget.properties[key] === undefined) {
                     currentWidget.properties[key] = value;
+                    recordOriginalProperty(currentWidget, key, value, trimmedLine, relativeIndent);
                 }
             } else if (key.startsWith('margin-')) {
                 // Handle margins in space-separated format
                 // Only set if not already set (prevent duplicates)
                 if (currentWidget.properties[key] === undefined) {
                     currentWidget.properties[key] = value;
+                    recordOriginalProperty(currentWidget, key, value, trimmedLine, relativeIndent);
                 }
             } else {
                 // Store all other properties as-is
                 // Only set if not already set (prevent duplicates)
                 if (currentWidget.properties[key] === undefined) {
                     currentWidget.properties[key] = value;
+                    recordOriginalProperty(currentWidget, key, value, trimmedLine, relativeIndent);
                 }
             }
             continue;
@@ -682,9 +722,11 @@ function parseOTUICode(code) {
         const boolPropMatch = trimmedLine.match(/^([a-z-]+)$/);
         if (boolPropMatch && indent > 0) {
             const key = boolPropMatch[1];
+            const relativeIndent = Math.max(0, indentLevel - currentWidget.indentLevel - 1);
             // Only set if not already set (avoid overwriting)
             if (currentWidget.properties[key] === undefined) {
                 currentWidget.properties[key] = 'true';
+                recordOriginalProperty(currentWidget, key, 'true', trimmedLine, relativeIndent);
             }
             continue;
         }
@@ -721,6 +763,8 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
             parentType: node.parentType,
             indentLevel: node.indentLevel,
             properties: { ...node.properties },
+            originalKeys: { ...(node.originalKeys || {}) },
+            propertyList: node.propertyList ? node.propertyList.map(entry => ({ ...entry })) : [],
             children: Array.isArray(node.children) ? node.children.map(child => cloneWidgetData(child)) : [],
             isTemplate: false
         };
@@ -920,9 +964,10 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
             // Store in dataset for code generation
             // Convert hyphenated keys to camelCase (dataset requirement)
             const camelKey = toCamelCase(key);
+            const originalKeyName = (widgetData.originalKeys && widgetData.originalKeys[key]) || key;
             try {
                 widget.dataset[camelKey] = value;
-                keyMap[camelKey] = key; // Store original key name mapping
+                keyMap[camelKey] = originalKeyName; // Store original key name mapping
             } catch (e) {
                 // Fallback: store in a custom attribute if dataset fails
                 console.warn(`Could not store property '${key}' in dataset, using attribute instead:`, e);
@@ -946,6 +991,11 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
         // Always store padding object (even if empty) to ensure consistency
         widget.dataset._originalPadding = JSON.stringify(originalPadding);
         widget.dataset._originalSizeDefined = widgetData.sizeDefined ? 'true' : 'false';
+        if (widgetData.propertyList && widgetData.propertyList.length > 0) {
+            widget.dataset._originalPropertyList = JSON.stringify(widgetData.propertyList);
+        } else if (widget.dataset._originalPropertyList) {
+            delete widget.dataset._originalPropertyList;
+        }
 
         if (Object.keys(specialProps).length > 0) {
             widget.dataset._specialProps = JSON.stringify(specialProps);
@@ -959,6 +1009,8 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
             parentType: widgetData.parentType,
             indentLevel: widgetData.indentLevel,
             properties: { ...widgetData.properties },
+            originalKeys: { ...(widgetData.originalKeys || {}) },
+            propertyList: widgetData.propertyList ? widgetData.propertyList.map(entry => ({ ...entry })) : [],
             sizeDefined: widgetData.sizeDefined || false,
             children: widgetData.children.map(child => ({
                 type: child.type,
@@ -966,6 +1018,8 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
                 parentType: child.parentType,
                 indentLevel: child.indentLevel,
                 properties: { ...child.properties },
+                originalKeys: { ...(child.originalKeys || {}) },
+                propertyList: child.propertyList ? child.propertyList.map(entry => ({ ...entry })) : [],
                 sizeDefined: child.sizeDefined || false,
                 children: [] // Don't store nested children to avoid deep circular refs
             }))
@@ -985,6 +1039,9 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
         
         // Save key mapping
         widget.dataset._keyMap = JSON.stringify(keyMap);
+        if (typeof window !== 'undefined' && window.setWidgetDisplayText) {
+            window.setWidgetDisplayText(widget);
+        }
         
         // Set ID if specified
         if (widgetData.properties.id) {
@@ -1053,6 +1110,20 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
         if (widget) {
             currentY += (parseInt(widget.style.height) || 100) + spacing;
         }
+    });
+    
+    requestAnimationFrame(() => {
+        anchorUpdateMap.clear();
+        createdWidgets.forEach(widget => {
+            const parentElement = widget.parentElement;
+            if (!parentElement || !parentElement.classList || !parentElement.classList.contains('widget')) {
+                return;
+            }
+            const widgetData = widget.dataset._widgetData ? JSON.parse(widget.dataset._widgetData) : null;
+            if (!widgetData) return;
+            anchorUpdateMap.delete(widget);
+            applyAnchorsToWidget(widget, widgetData, parentElement);
+        });
     });
     
     return createdWidgets;

@@ -198,6 +198,9 @@ function updatePropertyEditor() {
                 delete selectedWidget.dataset._originalAnchors;
                 delete selectedWidget.dataset._originalMargins;
             }
+            if (selectedWidget.dataset._originalPropertyList !== undefined) {
+                delete selectedWidget.dataset._originalPropertyList;
+            }
             
             // Handle special properties
             if (key === 'width') {
@@ -229,42 +232,10 @@ function updatePropertyEditor() {
                     const contentEl = selectedWidget.querySelector('.widget-content');
                     if (contentEl) contentEl.style.font = newValue;
                 }
-            } else if (key === 'text') {
-                const contentEl = selectedWidget.querySelector('.widget-content');
-                if (contentEl) contentEl.textContent = newValue;
-            } else if (key === 'title') {
-                const contentEl = selectedWidget.querySelector('.widget-content');
-                if (contentEl && !selectedWidget.dataset.text) contentEl.textContent = newValue;
-            } else if (key === 'placeholder') {
-                const contentEl = selectedWidget.querySelector('.widget-content');
-                if (contentEl && !selectedWidget.dataset.text && !selectedWidget.dataset.title) {
-                    contentEl.textContent = newValue;
-                }
-            } else if (key === 'percent') {
-                const contentEl = selectedWidget.querySelector('.widget-content');
-                if (contentEl && !selectedWidget.dataset.text && !selectedWidget.dataset.title) {
-                    contentEl.textContent = `${newValue}%`;
-                }
-            } else if (key === 'value') {
-                const contentEl = selectedWidget.querySelector('.widget-content');
-                if (contentEl && !selectedWidget.dataset.text && !selectedWidget.dataset.title && !selectedWidget.dataset.percent) {
-                    contentEl.textContent = `Value: ${newValue}`;
-                }
-            } else if (key === 'itemId') {
-                const contentEl = selectedWidget.querySelector('.widget-content');
-                if (contentEl && !selectedWidget.dataset.text && !selectedWidget.dataset.title) {
-                    contentEl.textContent = `Item ${newValue}`;
-                }
-            } else if (key === 'source') {
-                const contentEl = selectedWidget.querySelector('.widget-content');
-                if (contentEl && !selectedWidget.dataset.text && !selectedWidget.dataset.title) {
-                    contentEl.textContent = 'Image';
-                }
-            } else if (key === 'spriteId') {
-                const contentEl = selectedWidget.querySelector('.widget-content');
-                if (contentEl && !selectedWidget.dataset.text && !selectedWidget.dataset.title) {
-                    contentEl.textContent = `Sprite ${newValue}`;
-                }
+            }
+            
+            if (window.setWidgetDisplayText) {
+                window.setWidgetDisplayText(selectedWidget);
             }
             
             // Reapply styles when properties change (especially for image-source, font, etc.)

@@ -6,6 +6,47 @@ let snapToGrid = true;
 let showGrid = true;
 let clipboardWidget = null;
 
+function formatDisplayText(value) {
+    if (value === null || value === undefined) return '';
+    const str = String(value);
+    const trMatch = str.match(/^tr\s*\(\s*(["'])([\s\S]*?)\1(?:\s*,.*)?\)\s*$/i);
+    if (trMatch) {
+        return trMatch[2];
+    }
+    const quotedMatch = str.match(/^["']([\s\S]*?)["']$/);
+    if (quotedMatch) {
+        return quotedMatch[1];
+    }
+    return str;
+}
+
+function setWidgetDisplayText(widget) {
+    if (!widget) return;
+    const contentEl = widget.querySelector('.widget-content');
+    if (!contentEl) return;
+    let displayText = '';
+    if (widget.dataset.text && widget.dataset.text.trim() !== '') {
+        displayText = formatDisplayText(widget.dataset.text);
+    } else if (widget.dataset.title && widget.dataset.title.trim() !== '') {
+        displayText = formatDisplayText(widget.dataset.title);
+    } else if (widget.dataset.placeholder && widget.dataset.placeholder.trim() !== '') {
+        displayText = formatDisplayText(widget.dataset.placeholder);
+    } else if (widget.dataset.percent && widget.dataset.percent.trim() !== '') {
+        displayText = `${formatDisplayText(widget.dataset.percent)}%`;
+    } else if (widget.dataset.value && widget.dataset.value.trim() !== '') {
+        displayText = `Value: ${formatDisplayText(widget.dataset.value)}`;
+    } else if (widget.dataset.itemId && widget.dataset.itemId.trim() !== '') {
+        displayText = `Item ${formatDisplayText(widget.dataset.itemId)}`;
+    } else if (widget.dataset.source) {
+        displayText = 'Image';
+    } else if (widget.dataset.spriteId && widget.dataset.spriteId.trim() !== '') {
+        displayText = `Sprite ${formatDisplayText(widget.dataset.spriteId)}`;
+    }
+    contentEl.textContent = displayText;
+}
+
+window.setWidgetDisplayText = setWidgetDisplayText;
+
 function assetsReady(action) {
     if (window.ensureAssetsLoaded) {
         return window.ensureAssetsLoaded(action);
@@ -224,6 +265,12 @@ function startDrag(widget, e) {
             delete widget.dataset._originalAnchors;
             delete widget.dataset._originalMargins;
         }
+        if (widget.dataset._originalPropertyList !== undefined) {
+            delete widget.dataset._originalPropertyList;
+        }
+        if (widget.dataset._originalPropertyList !== undefined) {
+            delete widget.dataset._originalPropertyList;
+        }
         
         saveState();
         updateAll();
@@ -347,11 +394,11 @@ function createWidget(type) {
     // Don't show default labels like "FlashWindow", "Image", etc.
     let displayContent = '';
     if (widget.dataset.text) {
-        displayContent = widget.dataset.text;
+        displayContent = formatDisplayText(widget.dataset.text);
     } else if (widget.dataset.title) {
-        displayContent = widget.dataset.title;
+        displayContent = formatDisplayText(widget.dataset.title);
     } else if (widget.dataset.placeholder) {
-        displayContent = widget.dataset.placeholder;
+        displayContent = formatDisplayText(widget.dataset.placeholder);
     }
     // Removed default labels: Item, percent, value, Image, Sprite, widget type name
 
@@ -359,6 +406,7 @@ function createWidget(type) {
         <div class="widget-content">${displayContent}</div>
         ${['nw','n','ne','w','e','sw','s','se'].map(d => `<div class="resize-handle ${d}"></div>`).join('')}
     `;
+    setWidgetDisplayText(widget);
 
     widget.onclick = e => { 
         e.stopPropagation(); 
