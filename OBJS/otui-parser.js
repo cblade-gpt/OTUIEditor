@@ -555,6 +555,7 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
                     widget.style.width = `${sizeValue}px`;
                     importedWidth = sizeValue;
                     widget.dataset._importedWidth = sizeValue;
+                    widget.dataset.userWidthOverride = 'true';
                 }
                 return;
             } else if (key === 'height') {
@@ -563,6 +564,7 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
                     widget.style.height = `${sizeValue}px`;
                     importedHeight = sizeValue;
                     widget.dataset._importedHeight = sizeValue;
+                    widget.dataset.userHeightOverride = 'true';
                 }
                 return;
             }

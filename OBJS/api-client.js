@@ -121,8 +121,27 @@ const NON_OTUI_DATASET_KEYS = new Set([
     'widgetdata',
     'widgetData',
     'parentType',
-    'originalTypeName'
+    'originalTypeName',
+    'clipWidth',
+    'clipHeight',
+    'clipX',
+    'clipY',
+    'clipSizeApplied',
+    'clipObserverAdded',
+    'imageWidth',
+    'imageHeight',
+    'originalImageUrl',
+    'userWidthOverride',
+    'userHeightOverride'
 ]);
+
+function camelToHyphenCase(str) {
+    if (!str) return str;
+    return str
+        .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+        .replace(/_/g, '-')
+        .toLowerCase();
+}
 
 // Serialize widget to data structure (API only, avoid collision with template serialization)
 // IMPORTANT: This function must NOT include parent references to avoid circular structures
@@ -136,6 +155,24 @@ function serializeWidgetForAPI(widget) {
     const parent = widget.parentElement;
     const widgetStyle = window.getComputedStyle(widget);
     const parentStyle = parent ? window.getComputedStyle(parent) : null;
+    let propertyKeyMap = null;
+    if (widget.dataset._keyMap) {
+        try {
+            propertyKeyMap = JSON.parse(widget.dataset._keyMap);
+        } catch (e) {
+            propertyKeyMap = null;
+        }
+    }
+    const normalizePropertyKey = (rawKey) => {
+        if (!rawKey) return rawKey;
+        if (propertyKeyMap && propertyKeyMap[rawKey]) {
+            return propertyKeyMap[rawKey];
+        }
+        if (rawKey.startsWith('!')) {
+            return '!' + camelToHyphenCase(rawKey.slice(1));
+        }
+        return camelToHyphenCase(rawKey);
+    };
     const safeParse = (value) => {
         if (typeof value === 'number') return value;
         if (typeof value === 'string') {
@@ -185,7 +222,12 @@ function serializeWidgetForAPI(widget) {
     // Collect all dataset properties (excluding internal _ prefixed ones)
     Object.keys(widget.dataset).forEach(key => {
         if (!key.startsWith('_') && !NON_OTUI_DATASET_KEYS.has(key)) {
-            widgetData.properties[key] = widget.dataset[key];
+            let datasetKey = key;
+            if (datasetKey === 'align') {
+                datasetKey = 'textAlign';
+            }
+            const normalizedKey = normalizePropertyKey(datasetKey);
+            widgetData.properties[normalizedKey] = widget.dataset[key];
         }
     });
     

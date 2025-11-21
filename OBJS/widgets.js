@@ -28,7 +28,15 @@ const OTUI_WIDGETS = {
     UISpinBox: { category: "Controls", isContainer: false, props: { value: 0, minimum: 0, maximum: 100, step: 1 }, events: { onValueChange: 'function(widget, value)' } },
     
     // ========== DISPLAY ==========
-    UILabel: { category: "Display", isContainer: false, props: { text: "", align: "center" }, events: {} },
+    UILabel: { 
+        category: "Display", 
+        isContainer: false, 
+        props: { 
+            text: "",
+            textAlign: { type: "select", default: "center", options: ["left", "center", "right"], label: "Text Align" }
+        }, 
+        events: {} 
+    },
     UIImage: { category: "Display", isContainer: false, props: { source: "/images/icon.png" }, events: {} },
     UISprite: { category: "Display", isContainer: false, props: { spriteId: 1, width: 32, height: 32 }, events: {} },
     UIMap: { category: "Display", isContainer: false, props: { zoom: 1, floor: 7 }, events: { onMousePress: 'function(widget, pos)' } },

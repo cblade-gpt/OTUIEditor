@@ -422,12 +422,14 @@ function applyOTCV8Styles(widget, type) {
     // Style widget content text
     const contentEl = widget.querySelector('.widget-content');
     if (contentEl && type !== 'UIProgressBar' && type !== 'UIHealthBar' && type !== 'UIManaBar' && type !== 'UIExperienceBar') {
+        const alignSetting = widget.dataset.textAlign || widget.dataset.align || 'center';
+        const justifyContentValue = alignSetting === 'left' ? 'flex-start' : alignSetting === 'right' ? 'flex-end' : 'center';
         contentEl.style.cssText = `
             padding: ${type === 'UILabel' ? '2px' : '6px 8px'};
             color: ${type === 'UILabel' ? '#d4d4d4' : '#e0e0e0'};
             font-size: ${type === 'UILabel' ? '11px' : '11px'};
             font-family: ${type === 'UITextEdit' ? '"Courier New", monospace' : '"Tahoma", "Arial", sans-serif'};
-            text-align: ${widget.dataset.align || 'center'};
+            text-align: ${alignSetting};
             white-space: ${type === 'UITextEdit' ? 'nowrap' : 'normal'};
             overflow: ${type === 'UITextEdit' ? 'hidden' : 'visible'};
             text-overflow: ${type === 'UITextEdit' ? 'ellipsis' : 'clip'};
@@ -435,7 +437,7 @@ function applyOTCV8Styles(widget, type) {
             height: 100%;
             display: flex;
             align-items: center;
-            justify-content: ${widget.dataset.align === 'left' ? 'flex-start' : widget.dataset.align === 'right' ? 'flex-end' : 'center'};
+            justify-content: ${justifyContentValue};
         `;
         if (type === 'UILabel') {
             contentEl.style.textShadow = '1px 1px 1px rgba(0,0,0,0.8)';

@@ -4,36 +4,89 @@
 let cookieConsentGiven = false;
 const COOKIE_EXPIRY_DAYS = 365; // 1 year expiry for templates and preferences
 const PROGRESS_COOKIE_EXPIRY_DAYS = 7; // 7 days for auto-save progress
+const DAY_MS = 24 * 60 * 60 * 1000;
+const COOKIE_STORAGE_PREFIX = 'otui_builder_cookie:';
+let cachedCookieAvailability = null;
+
+function getFallbackStorageKey(name) {
+    return `${COOKIE_STORAGE_PREFIX}${name}`;
+}
+
+function setLocalStorageCookie(name, value, days) {
+    try {
+        const payload = {
+            value,
+            expiresAt: days ? Date.now() + days * DAY_MS : null
+        };
+        localStorage.setItem(getFallbackStorageKey(name), JSON.stringify(payload));
+        return true;
+    } catch (e) {
+        console.error('Error using localStorage fallback for cookie:', e);
+        return false;
+    }
+}
+
+function getLocalStorageCookie(name) {
+    try {
+        const raw = localStorage.getItem(getFallbackStorageKey(name));
+        if (!raw) return null;
+        const payload = JSON.parse(raw);
+        if (payload.expiresAt && payload.expiresAt < Date.now()) {
+            localStorage.removeItem(getFallbackStorageKey(name));
+            return null;
+        }
+        return payload.value;
+    } catch (e) {
+        return null;
+    }
+}
+
+function deleteLocalStorageCookie(name) {
+    try {
+        localStorage.removeItem(getFallbackStorageKey(name));
+    } catch (e) {
+        console.error('Error removing localStorage fallback cookie:', e);
+    }
+}
 
 // Check if cookies are enabled
 function areCookiesEnabled() {
+    if (cachedCookieAvailability !== null) {
+        return cachedCookieAvailability;
+    }
     try {
-        document.cookie = 'test=1';
-        const enabled = document.cookie.indexOf('test=') !== -1;
-        document.cookie = 'test=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        document.cookie = 'otui_builder_test=1';
+        const enabled = document.cookie.indexOf('otui_builder_test=') !== -1;
+        document.cookie = 'otui_builder_test=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+        cachedCookieAvailability = enabled;
         return enabled;
     } catch (e) {
+        cachedCookieAvailability = false;
         return false;
     }
 }
 
 // Set a cookie with expiry
 function setCookie(name, value, days) {
-    if (!cookieConsentGiven) {
+    const isConsentCookie = name === 'otui_builder_cookie_consent';
+    if (!cookieConsentGiven && !isConsentCookie) {
         console.warn('Cookie consent not given. Cannot set cookie:', name);
         return false;
     }
     
     try {
-        const date = new Date();
-        date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
-        const expires = `expires=${date.toUTCString()}`;
-        document.cookie = `${name}=${encodeURIComponent(value)};${expires};path=/;SameSite=Lax`;
-        return true;
+        if (areCookiesEnabled()) {
+            const date = new Date();
+            date.setTime(date.getTime() + ((days || COOKIE_EXPIRY_DAYS) * DAY_MS));
+            const expires = `expires=${date.toUTCString()}`;
+            document.cookie = `${name}=${encodeURIComponent(value)};${expires};path=/;SameSite=Lax`;
+            return true;
+        }
     } catch (e) {
         console.error('Error setting cookie:', e);
-        return false;
     }
+    
+    return setLocalStorageCookie(name, value, days || COOKIE_EXPIRY_DAYS);
 }
 
 // Get a cookie value
@@ -48,7 +101,8 @@ function getCookie(name) {
                 return decodeURIComponent(c.substring(nameEQ.length, c.length));
             }
         }
-        return null;
+        const fallback = getLocalStorageCookie(name);
+        return fallback;
     } catch (e) {
         console.error('Error getting cookie:', e);
         return null;
@@ -59,6 +113,7 @@ function getCookie(name) {
 function deleteCookie(name) {
     try {
         document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+        deleteLocalStorageCookie(name);
         return true;
     } catch (e) {
         console.error('Error deleting cookie:', e);
@@ -68,8 +123,13 @@ function deleteCookie(name) {
 
 // Check if cookie consent has been given
 function hasCookieConsent() {
+    if (cookieConsentGiven) return true;
     const consent = getCookie('otui_builder_cookie_consent');
-    return consent === 'accepted';
+    if (consent === 'accepted') {
+        cookieConsentGiven = true;
+        return true;
+    }
+    return false;
 }
 
 // Set cookie consent

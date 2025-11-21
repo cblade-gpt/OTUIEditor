@@ -156,6 +156,7 @@ function generateOTUICode(widgetTree, widgetDefinitions = {}, importedTemplates 
         }
         
         let sizeAlreadyDefined = false;
+        const emittedProperties = new Set();
         let originalPropertyList = widgetData.originalPropertyList || null;
         let usingOriginalPropertyList = false;
         let originalPropertyListIncludesMargins = false;
@@ -180,10 +181,12 @@ function generateOTUICode(widgetTree, widgetDefinitions = {}, importedTemplates 
                     originalPropertyListIncludesMargins = true;
                 }
                 if (value === undefined || value === null) return;
+                if (emittedProperties.has(key)) return;
                 if (key.startsWith('!')) {
                     value = formatTranslationValue(value);
                 }
                 code += `${indent}  ${key}: ${value}\n`;
+                emittedProperties.add(key);
             });
         } else {
             // Generate properties from widgetData
@@ -196,12 +199,14 @@ function generateOTUICode(widgetTree, widgetDefinitions = {}, importedTemplates 
                     sizeAlreadyDefined = true;
                 }
                 if (value === undefined || value === null || value === '') return;
+                if (emittedProperties.has(key)) return;
                 
                 let formattedValue = value;
                 if (key.startsWith('!')) {
                     formattedValue = formatTranslationValue(value);
                 }
                 code += `${indent}  ${key}: ${formattedValue}\n`;
+                emittedProperties.add(key);
             });
         }
         

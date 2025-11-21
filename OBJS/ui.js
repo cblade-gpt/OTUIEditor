@@ -16,6 +16,9 @@ function selectWidget(widget, options = {}) {
     }
     
     if (widget) {
+        if (typeof normalizeLegacyDatasetKeys === 'function') {
+            normalizeLegacyDatasetKeys(widget);
+        }
         multiSelectedWidgets.add(widget);
         widget.classList.add('selected');
         selectedWidget = widget;
@@ -177,6 +180,15 @@ function updatePropertyEditor() {
     const widgetProps = def.props || {};
 
     // Helper function to create property input
+    const formatPropertyLabel = (key) => {
+        if (!key) return '';
+        return key
+            .replace(/([A-Z])/g, ' $1')
+            .replace(/-/g, ' ')
+            .replace(/^./, char => char.toUpperCase())
+            .trim();
+    };
+    
     function createPropertyInput(key, propDef, defaultValue) {
         const div = document.createElement('div');
         div.className = 'form-group';
@@ -191,7 +203,7 @@ function updatePropertyEditor() {
             currentValue = selectedWidget.dataset[key];
         }
         const value = currentValue !== undefined && currentValue !== '' ? currentValue : defaultValue;
-        const label = propDef.label || key;
+        const label = propDef.label || formatPropertyLabel(key);
         
         let inputHTML = '';
         if (propDef.type === 'boolean') {
@@ -216,16 +228,37 @@ function updatePropertyEditor() {
         
         // Real-time update handler (for text inputs, use oninput; for others, use onchange)
         const updateHandler = (e) => {
+            if (!selectedWidget) return;
             let newValue;
             if (propDef.type === 'boolean') {
                 newValue = e.target.checked ? 'true' : 'false';
-            } else if (propDef.type === 'select') {
-                newValue = e.target.value;
             } else {
                 newValue = e.target.value;
             }
             
-            selectedWidget.dataset[key] = newValue;
+            let dimensionHandled = false;
+            if (key === 'width' || key === 'height') {
+                const numericValue = parseInt(newValue, 10);
+                const dimensionName = key === 'width' ? 'Width' : 'Height';
+                if (!isNaN(numericValue) && numericValue > 0) {
+                    selectedWidget.dataset[key] = String(numericValue);
+                    selectedWidget.dataset[`user${dimensionName}Override`] = 'true';
+                    selectedWidget.style[key] = `${numericValue}px`;
+                } else {
+                    delete selectedWidget.dataset[key];
+                    delete selectedWidget.dataset[`user${dimensionName}Override`];
+                    selectedWidget.style[key] = '';
+                }
+                dimensionHandled = true;
+            }
+            
+            if (!dimensionHandled) {
+                if (propDef.type === 'select') {
+                    selectedWidget.dataset[key] = newValue;
+                } else {
+                    selectedWidget.dataset[key] = newValue;
+                }
+            }
             
             // CRITICAL: Clear preserved anchors/margins when widget properties are edited
             // This ensures code generation recalculates anchors based on new values
@@ -238,19 +271,7 @@ function updatePropertyEditor() {
             }
             
             // Handle special properties
-            if (key === 'width') {
-                // Apply width directly
-                const widthValue = parseInt(newValue, 10);
-                if (!isNaN(widthValue) && widthValue > 0) {
-                    selectedWidget.style.width = `${widthValue}px`;
-                }
-            } else if (key === 'height') {
-                // Apply height directly
-                const heightValue = parseInt(newValue, 10);
-                if (!isNaN(heightValue) && heightValue > 0) {
-                    selectedWidget.style.height = `${heightValue}px`;
-                }
-            } else if (key === 'visible') {
+            if (key === 'visible') {
                 selectedWidget.style.display = (newValue === 'true' || newValue === true) ? '' : 'none';
             } else if (key === 'opacity') {
                 selectedWidget.style.opacity = newValue || '1';
@@ -298,7 +319,20 @@ function updatePropertyEditor() {
 
     // Add widget-specific properties first
     Object.entries(widgetProps).forEach(([key, val]) => {
-        createPropertyInput(key, { type: typeof val === 'boolean' ? 'boolean' : typeof val === 'number' ? 'number' : 'text', default: val }, val);
+        let propDef;
+        let defaultValue;
+        if (val && typeof val === 'object' && !Array.isArray(val) && (val.type || val.default !== undefined || val.options || val.label)) {
+            propDef = { type: val.type || (typeof val.default === 'number' ? 'number' : typeof val.default === 'boolean' ? 'boolean' : 'text') };
+            if (val.options) propDef.options = Array.isArray(val.options) ? val.options.slice() : val.options;
+            if (val.label) propDef.label = val.label;
+            if (val.placeholder) propDef.placeholder = val.placeholder;
+            defaultValue = val.default;
+            propDef.default = val.default;
+        } else {
+            propDef = { type: typeof val === 'boolean' ? 'boolean' : typeof val === 'number' ? 'number' : 'text', default: val };
+            defaultValue = val;
+        }
+        createPropertyInput(key, propDef, defaultValue);
     });
 
     // Add separator

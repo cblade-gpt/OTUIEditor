@@ -10,6 +10,14 @@ let arrowNudgeKey = null;
 let arrowNudgeStartTime = 0;
 let arrowNudgeMoved = false;
 
+function normalizeLegacyDatasetKeys(widget) {
+    if (!widget || !widget.dataset) return;
+    if (widget.dataset.align && !widget.dataset.textAlign) {
+        widget.dataset.textAlign = widget.dataset.align;
+        delete widget.dataset.align;
+    }
+}
+
 function formatDisplayText(value) {
     if (value === null || value === undefined) return '';
     const str = String(value);
@@ -353,6 +361,15 @@ function startResize(widget, dir, e) {
     const up = () => {
         document.removeEventListener('mousemove', move);
         document.removeEventListener('mouseup', up);
+        
+        const endW = Math.round(widget.offsetWidth);
+        const endH = Math.round(widget.offsetHeight);
+        if (Math.round(startW) !== endW) {
+            widget.dataset.userWidthOverride = 'true';
+        }
+        if (Math.round(startH) !== endH) {
+            widget.dataset.userHeightOverride = 'true';
+        }
         
         // CRITICAL: Clear preserved anchors/margins when widget is resized
         // This ensures code generation recalculates anchors based on new size/position
