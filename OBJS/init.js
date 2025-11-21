@@ -14,7 +14,10 @@ function updateAll() {
     if (countEl) countEl.textContent = document.querySelectorAll('.widget').length;
 
     // Update code in modal if it exists (only generate, don't update DOM unless modal is open)
-    updateCodeDisplay();
+    // updateCodeDisplay is now async, but we don't need to wait for it
+    updateCodeDisplay().catch(err => {
+        console.error('Error updating code display:', err);
+    });
 
     updatePreview();
     if (typeof updateHierarchyTree === 'function') updateHierarchyTree();
@@ -492,7 +495,7 @@ window.initOTUIBuilder = function() {
         });
         
         // Apply generated code to canvas
-        bind('aiApplyCodeBtn', () => {
+        bind('aiApplyCodeBtn', async () => {
             if (!ensureAssetsLoaded('applying generated code')) {
                 return;
             }
@@ -518,15 +521,37 @@ window.initOTUIBuilder = function() {
                 content.innerHTML = '';
                 selectWidget(null);
                 
-                // Parse OTUI code
-                if (!window.parseOTUICode || !window.createWidgetsFromOTUI) {
+                // Parse OTUI code - use API if available, otherwise local
+                if (!window.parseOTUICode && !window.APIClient) {
                     console.error('OTUI parser not loaded');
                     showToast('OTUI parser not loaded. Please refresh the page.');
                     return;
                 }
                 
                 console.log('Parsing OTUI code...');
-                const parsedResult = window.parseOTUICode(code) || {};
+                let parsedResult;
+                // parseOTUICode now always uses API (returns a promise)
+                if (window.APIClient && window.APIClient.parseOTUICode) {
+                    try {
+                        parsedResult = await window.APIClient.parseOTUICode(code);
+                    } catch (error) {
+                        console.error('API parse failed:', error);
+                        showToast(`Failed to parse OTUI code: ${error.message}`);
+                        return;
+                    }
+                } else if (window.parseOTUICode) {
+                    // Fallback to local function if available (should not happen in secure build)
+                    try {
+                        parsedResult = await window.parseOTUICode(code);
+                    } catch (error) {
+                        console.error('Parse failed:', error);
+                        showToast(`Failed to parse OTUI code: ${error.message}`);
+                        return;
+                    }
+                } else {
+                    showToast('OTUI parser not available. API server required.');
+                    return;
+                }
                 const parsedWidgets = Array.isArray(parsedResult) ? parsedResult : (parsedResult.widgets || []);
                 const importedTemplates = parsedResult.templates || (Array.isArray(parsedResult) ? [] : []);
                 const templateMap = parsedResult.templateMap || {};
@@ -626,12 +651,34 @@ window.initOTUIBuilder = function() {
             if (modal) modal.style.display = 'none';
         });
     }
-    bind('exportAllBtn', () => {
+    bind('exportAllBtn', async () => {
         const zip = new JSZip();
         const name = document.getElementById('moduleName')?.value || 'main';
         
-        // Generate all files
-        const otuiCode = generateOTUICode();
+        // Generate all files - use API if available, otherwise local
+        let otuiCode;
+        // generateOTUICode now always uses API (returns a promise)
+        if (window.APIClient && window.APIClient.generateOTUICode) {
+            try {
+                otuiCode = await window.APIClient.generateOTUICode();
+            } catch (error) {
+                console.error('API generate failed:', error);
+                showToast(`Failed to generate OTUI code: ${error.message}`);
+                return;
+            }
+        } else if (typeof generateOTUICode === 'function') {
+            // Fallback to local function if available (should not happen in secure build)
+            try {
+                otuiCode = await generateOTUICode();
+            } catch (error) {
+                console.error('Generate failed:', error);
+                showToast(`Failed to generate OTUI code: ${error.message}`);
+                return;
+            }
+        } else {
+            showToast('OTUI code generator not available. API server required.');
+            return;
+        }
         const luaCode = generateLuaCode();
         const otmodCode = generateOTMODCode();
         
@@ -963,14 +1010,36 @@ window.initOTUIBuilder = function() {
                 showToast('Loading OTUI file...');
                 const text = await file.text();
                 
-                // Parse and create widgets
-                if (!window.parseOTUICode || !window.createWidgetsFromOTUI) {
+                // Parse and create widgets - use API if available, otherwise local
+                if (!window.parseOTUICode && !window.APIClient) {
                     showToast('OTUI parser not loaded. Please refresh the page.');
                     return;
                 }
                 
                 console.log('Parsing imported OTUI file:', file.name);
-                const parsedResult = window.parseOTUICode(text) || {};
+                let parsedResult;
+                // parseOTUICode now always uses API (returns a promise)
+                if (window.APIClient && window.APIClient.parseOTUICode) {
+                    try {
+                        parsedResult = await window.APIClient.parseOTUICode(text);
+                    } catch (error) {
+                        console.error('API parse failed:', error);
+                        showToast(`Failed to parse OTUI file: ${error.message}`);
+                        return;
+                    }
+                } else if (window.parseOTUICode) {
+                    // Fallback to local function if available (should not happen in secure build)
+                    try {
+                        parsedResult = await window.parseOTUICode(text);
+                    } catch (error) {
+                        console.error('Parse failed:', error);
+                        showToast(`Failed to parse OTUI file: ${error.message}`);
+                        return;
+                    }
+                } else {
+                    showToast('OTUI parser not available. API server required.');
+                    return;
+                }
                 const parsedWidgets = Array.isArray(parsedResult) ? parsedResult : (parsedResult.widgets || []);
                 const importedTemplates = parsedResult.templates || (Array.isArray(parsedResult) ? [] : []);
                 const templateMap = parsedResult.templateMap || {};

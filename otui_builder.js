@@ -1,4 +1,5 @@
 const scripts = [
+    'OBJS/api-client.js',  // API client - loads first to wrap functions
     'OBJS/utils.js',
     'OBJS/widgets.js',
     'OBJS/styleloader.js',

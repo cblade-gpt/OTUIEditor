@@ -1,0 +1,13 @@
+# Server
+server/node_modules/
+server/uploads/
+server/.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+

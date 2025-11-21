@@ -164,127 +164,11 @@ function getClientDataPath() {
 
 // Parse OTUI file content
 function parseOTUIFile(content) {
-    const styles = {};
-    const lines = content.split('\n');
-    let currentStyle = null;
-    let currentState = null;
-    let currentStateName = null; // Track state name for originalStates storage
-    let baseIndent = 0;
-    
-    for (let i = 0; i < lines.length; i++) {
-        const originalLine = lines[i];
-        const trimmedLine = originalLine.trim();
-        
-        // Skip empty lines and comments
-        if (!trimmedLine || trimmedLine.startsWith('//')) continue;
-        
-        // Calculate indentation (spaces or tabs at start)
-        const indent = originalLine.match(/^(\s*)/)[1].length;
-        
-        // Check for style definition (WidgetName < ParentWidget or WidgetName)
-        // Examples: "Window < UIWindow", "Button", "Panel < FlatPanel"
-        const styleMatch = trimmedLine.match(/^([A-Za-z][A-Za-z0-9_]*)\s*(?:<\s*([A-Za-z][A-Za-z0-9_]*))?/);
-        if (styleMatch && indent === 0) {
-            const styleName = styleMatch[1];
-            const parentName = styleMatch[2];
-            
-            currentStyle = {
-                name: styleName,
-                parent: parentName || null,
-                properties: {},
-                states: {},
-                originalStates: {} // Store original state properties before resolution
-            };
-            styles[styleName] = currentStyle;
-            currentState = null;
-            currentStateName = null;
-            baseIndent = 0;
-            continue;
-        }
-        
-        // Check for state ($hover, $pressed, etc.)
-        const stateMatch = trimmedLine.match(/^\$([a-z]+)/);
-        if (stateMatch && currentStyle) {
-            const stateName = stateMatch[1];
-            if (!currentStyle.states[stateName]) {
-                currentStyle.states[stateName] = {};
-            }
-            if (!currentStyle.originalStates[stateName]) {
-                currentStyle.originalStates[stateName] = {};
-            }
-            currentState = currentStyle.states[stateName];
-            currentStateName = stateName; // Track state name
-            baseIndent = indent;
-            continue;
-        }
-        
-        // Only process properties if we have a current style
-        if (!currentStyle) continue;
-        
-        // Reset state if we're back at base indent level (end of state block)
-        if (currentState && indent <= baseIndent && !trimmedLine.startsWith('$')) {
-            currentState = null;
-            currentStateName = null;
-            baseIndent = 0;
-        }
-        
-        // Check for property with colon (key: value)
-        // Examples: "image-source: /images/ui/button.png", "padding: 5", "!text: Hello"
-        const propMatchColon = trimmedLine.match(/^([!a-z-]+):\s*(.+)$/);
-        if (propMatchColon) {
-            const key = propMatchColon[1];
-            let value = propMatchColon[2].trim();
-            
-            // Remove quotes if present
-            if ((value.startsWith('"') && value.endsWith('"')) || 
-                (value.startsWith("'") && value.endsWith("'"))) {
-                value = value.slice(1, -1);
-            }
-            
-            const target = currentState || currentStyle.properties;
-            target[key] = value;
-            // Also store in originalStates if we're in a state
-            if (currentStateName && currentStyle.originalStates && currentStyle.originalStates[currentStateName]) {
-                currentStyle.originalStates[currentStateName][key] = value;
-            }
-            continue;
-        }
-        
-        // Check for property without colon (key value) - space-separated
-        // Examples: "size 100 50", "image-clip 0 0 32 32"
-        const propMatchSpace = trimmedLine.match(/^([a-z-]+)\s+(.+)$/);
-        if (propMatchSpace) {
-            const key = propMatchSpace[1];
-            const value = propMatchSpace[2].trim();
-            
-            const target = currentState || currentStyle.properties;
-            target[key] = value;
-            // Also store in originalStates if we're in a state
-            if (currentStateName && currentStyle.originalStates && currentStyle.originalStates[currentStateName]) {
-                currentStyle.originalStates[currentStateName][key] = value;
-            }
-            continue;
-        }
-        
-        // Debug: log unparsed lines to help identify format issues
-        if (window.DEBUG_PARSE && indent > 0 && currentStyle) {
-            console.log(`Unparsed line in ${currentStyle.name}: "${trimmedLine}" (indent: ${indent})`);
-        }
-        
-        // Check for boolean properties (just the key name means true)
-        // Examples: "opacity", "focusable"
-        const boolPropMatch = trimmedLine.match(/^([a-z-]+)$/);
-        if (boolPropMatch && indent > 0) {
-            const key = boolPropMatch[1];
-            const target = currentState || currentStyle.properties;
-            // Only set if not already set (avoid overwriting with true)
-            if (target[key] === undefined) {
-                target[key] = 'true';
-            }
-        }
+    // SECURE: All parsing logic is server-side only
+    if (window.APIClient && window.APIClient.parseOTUIFile) {
+        return window.APIClient.parseOTUIFile(content);
     }
-    
-    return styles;
+    throw new Error('parseOTUIFile: API server required. Please start the server.');
 }
 
 // Load a single OTUI file
@@ -343,7 +227,7 @@ async function loadOTUIFile(filename, suppressErrors = false) {
                     
                     if (response.ok) {
                         const content = await response.text();
-                        const styles = parseOTUIFile(content);
+                        const styles = await parseOTUIFile(content);
                         styleCache[filename] = styles;
                         return styles;
                     }
@@ -353,16 +237,31 @@ async function loadOTUIFile(filename, suppressErrors = false) {
             }
             
             // Fallback to XMLHttpRequest for file://
-            return new Promise((resolve) => {
+            return new Promise((resolve, reject) => {
                 const xhr = new XMLHttpRequest();
                 xhr.open('GET', `file:///${path.replace(/\\/g, '/')}/styles/${filename}`, true);
-                xhr.onreadystatechange = function() {
+                xhr.onreadystatechange = async function() {
                     if (xhr.readyState === 4) {
                         if (xhr.status === 0 || xhr.status === 200) {
                             const content = xhr.responseText;
-                            const styles = parseOTUIFile(content);
-                            styleCache[filename] = styles;
-                            resolve(styles);
+                            try {
+                                const styles = await parseOTUIFile(content);
+                                styleCache[filename] = styles;
+                                resolve(styles);
+                            } catch (error) {
+                                // Check if it's a connection error
+                                const isConnectionError = error.message.includes('Failed to fetch') || 
+                                                          error.message.includes('ERR_CONNECTION_REFUSED') ||
+                                                          error.message.includes('NetworkError');
+                                
+                                if (isConnectionError) {
+                                    console.warn(`API server not available for ${filename}. Returning empty styles.`);
+                                    styleCache[filename] = {};
+                                    resolve({});
+                                } else {
+                                    reject(error);
+                                }
+                            }
                         } else {
                             if (!suppressErrors) {
                                 console.warn(`Failed to load ${filename} (status: ${xhr.status})`);
@@ -1755,10 +1654,11 @@ function getImageUrl(imagePath) {
 async function loadOTUIFileFromFile(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onload = (e) => {
+        reader.onload = async (e) => {
             try {
                 const content = e.target.result;
-                const styles = parseOTUIFile(content);
+                // parseOTUIFile now returns a promise - await it
+                const styles = await parseOTUIFile(content);
                 // Store with filename as key
                 const filename = file.name;
                 styleCache[filename] = styles;
@@ -1776,8 +1676,21 @@ async function loadOTUIFileFromFile(file) {
                 
                 resolve(styles);
             } catch (error) {
-                console.error(`Error parsing ${file.name}:`, error);
-                reject(error);
+                // Check if it's a connection error
+                const isConnectionError = error.message.includes('Failed to fetch') || 
+                                          error.message.includes('ERR_CONNECTION_REFUSED') ||
+                                          error.message.includes('NetworkError');
+                
+                if (isConnectionError) {
+                    console.warn(`API server not available for ${file.name}. Please ensure the server is running.`);
+                    // Return empty styles instead of failing completely
+                    const filename = file.name;
+                    styleCache[filename] = {};
+                    resolve({});
+                } else {
+                    console.error(`Error parsing ${file.name}:`, error);
+                    reject(error);
+                }
             }
         };
         reader.onerror = () => {

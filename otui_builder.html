@@ -12,15 +12,22 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 
     <link rel="stylesheet" href="otui_builder.css">
+    
+    <!-- API Configuration - Set this to your server URL, or leave empty to use local functions -->
+    <script>
+        // Set API base URL (optional - if not set, will use local functions)
+        // Example: window.API_BASE_URL = 'http://localhost:3000/api';
+        window.API_BASE_URL = 'http://95.217.237.27:3000/api';
+    </script>
 </head>
 <body>
     <div class="app">
         <header class="app-header">
             <div class="header-left"><div class="logo"><span class="logo-icon">OTUI</span><span>Builder 0.1.1 Beta</span></div></div>
             <div class="header-right">
-                <button class="btn btn-secondary" id="widgetLibraryBtn" title="Widget Library">📚 Library</button>
-                <button class="btn btn-secondary" id="aiGenerateBtn" title="AI Generate Module">✨ AI Generate</button>
-                <button class="btn btn-secondary" id="settingsBtn" title="Settings">⚙ Settings</button>
+                <button class="btn btn-secondary" id="widgetLibraryBtn" title="Widget Library">Library</button>
+                <button class="btn btn-secondary" id="aiGenerateBtn" title="AI Generate Module">AI Generate</button>
+                <button class="btn btn-secondary" id="settingsBtn" title="Settings">Settings</button>
                 <button class="btn btn-secondary" id="newBtn">New</button>
                 <button class="btn btn-accent" id="exportBtn">Export Module</button>
             </div>
@@ -82,9 +89,9 @@
                         <div class="panel-header"><h3>Code</h3></div>
                         <div class="panel-content">
                             <button class="btn btn-accent" id="viewCodeBtn" style="width: 100%; margin-bottom: 0.5rem;">View Code</button>
-                            <button class="btn btn-secondary" id="aiGenerateBtnSidebar" style="width: 100%; margin-bottom: 0.5rem;">✨ AI Generate</button>
+                            <button class="btn btn-secondary" id="aiGenerateBtnSidebar" style="width: 100%; margin-bottom: 0.5rem;">AI Generate</button>
                             <label class="btn btn-secondary" style="width: 100%; margin-bottom: 0; cursor: pointer; text-align: center; display: block;">
-                                📁 Import OTUI File
+                                Import OTUI File
                                 <input type="file" id="importOTUIFileInput" accept=".otui" style="display: none;">
                             </label>
                         </div>
