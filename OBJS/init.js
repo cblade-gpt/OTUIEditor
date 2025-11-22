@@ -1252,14 +1252,7 @@ window.initOTUIBuilder = function() {
         // Load saved width from localStorage
         const savedWidth = localStorage.getItem('rightSidebarWidth');
         if (savedWidth) {
-            // Calculate maximum width based on viewport
-            const leftSidebar = document.querySelector('.sidebar-left');
-            const leftSidebarWidth = leftSidebar ? leftSidebar.offsetWidth : 260;
-            const minWorkspaceWidth = 400;
-            const maxWidth = window.innerWidth - leftSidebarWidth - minWorkspaceWidth;
-            
-            // Ensure saved width doesn't exceed maximum
-            const width = Math.min(parseInt(savedWidth) || 260, maxWidth);
+            const width = parseInt(savedWidth) || 260;
             rightSidebar.style.width = Math.max(200, width) + 'px';
         }
         
@@ -1279,19 +1272,20 @@ window.initOTUIBuilder = function() {
         document.addEventListener('mousemove', (e) => {
             if (!isResizing) return;
             
-            const diff = startX - e.clientX; // Inverted because we're resizing from left
+            // The resize handle is on the LEFT edge of the right sidebar
+            // Dragging RIGHT (e.clientX > startX) should DECREASE width (inverted behavior)
+            // Dragging LEFT (e.clientX < startX) should INCREASE width (inverted behavior)
+            const diff = startX - e.clientX;
             
-            // Calculate maximum width based on viewport
-            // Account for left sidebar (260px) and minimum workspace width (400px)
-            const leftSidebar = document.querySelector('.sidebar-left');
-            const leftSidebarWidth = leftSidebar ? leftSidebar.offsetWidth : 260;
-            const minWorkspaceWidth = 400;
-            const maxWidth = window.innerWidth - leftSidebarWidth - minWorkspaceWidth;
+            // No maximum width constraint - allow fluid expansion
+            // Only enforce minimum width of 200px
+            const newWidth = Math.max(200, startWidth + diff);
             
-            // Min 200px, max based on available viewport space
-            const newWidth = Math.max(200, Math.min(maxWidth, startWidth + diff));
-            
+            // Set width explicitly - this overrides flex behavior
             rightSidebar.style.width = newWidth + 'px';
+            rightSidebar.style.flexBasis = newWidth + 'px'; // Set flex-basis to match width
+            rightSidebar.style.flexShrink = '0'; // Prevent flexbox from auto-shrinking
+            rightSidebar.style.flexGrow = '0'; // Prevent flexbox from auto-growing
         });
         
         document.addEventListener('mouseup', () => {

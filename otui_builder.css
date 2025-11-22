@@ -204,16 +204,19 @@ body {
     display: flex;
     flex: 1;
     overflow: hidden;
+    min-width: 0; /* Allow flex items to shrink below their content size */
 }
 
 /* SIDEBARS */
 .sidebar {
     width: 260px;
+    min-width: 200px;
     background: linear-gradient(180deg, rgba(30, 41, 59, 0.95) 0%, rgba(15, 23, 42, 0.98) 100%);
     border-right: 1px solid rgba(51, 65, 85, 0.4);
     display: flex;
     flex-direction: column;
-    flex-shrink: 0;
+    flex-shrink: 1;
+    flex-grow: 0;
     backdrop-filter: blur(10px);
     box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
     position: relative;
@@ -223,7 +226,9 @@ body {
     border-right: none;
     border-left: 1px solid rgba(51, 65, 85, 0.4);
     box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
-    max-width: calc(100vw - 260px - 400px); /* Prevent overflow: viewport - left sidebar - min workspace */
+    min-width: 200px;
+    /* No max-width constraint - allow fluid expansion */
+    /* flex-shrink: 1 allows it to shrink when needed */
 }
 
 /* Resize handle for right sidebar */
@@ -278,6 +283,8 @@ body {
     display: flex;
     flex-direction: column;
     background: var(--bg-primary);
+    min-width: 0; /* Allow workspace to shrink when sidebar expands */
+    overflow: hidden;
 }
 
 .workspace-toolbar {
