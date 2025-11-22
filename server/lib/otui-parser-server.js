@@ -13,6 +13,33 @@ function translateAnchorEdge(anchorEdge) {
 }
 
 function getWidgetTypeFromOTUI(otuiName, widgetDefinitions = {}) {
+    // Explicit OTUI name mappings (OTUI -> UIWidget)
+    // These are common OTUI widget names that don't follow the "UI" prefix pattern
+    const explicitMappings = {
+        'VerticalScrollBar': 'UIScrollBar',
+        'HorizontalScrollBar': 'UIScrollBar',
+        'ScrollBar': 'UIScrollBar',
+        'MainWindow': 'UIWindow',
+        'GameLabel': 'UILabel',
+        'FlatPanel': 'UIPanel',
+        'ButtonBox': 'UIButtonBox',
+        'TextList': 'UITextList',
+        'ComboBox': 'UIComboBox',
+        'HorizontalSeparator': 'UIHorizontalSeparator',
+        'VerticalSeparator': 'UIVerticalSeparator',
+        'ScrollablePanel': 'UIScrollArea'
+    };
+    
+    // Check explicit mapping first
+    if (explicitMappings[otuiName]) {
+        const mappedType = explicitMappings[otuiName];
+        // Verify the mapped type exists in widgetDefinitions
+        if (widgetDefinitions[mappedType]) {
+            return mappedType;
+        }
+        return mappedType; // Return even if not in definitions (will be handled later)
+    }
+    
     // Check direct mapping in widgetDefinitions
     if (widgetDefinitions[otuiName]) {
         return otuiName;
@@ -89,6 +116,14 @@ function parseOTUICode(code, widgetDefinitions = {}) {
             const parentTypeName = widgetMatch[2];
             
             if (parentTypeName) {
+                // This is a template definition (e.g., "HotkeyListLabel < UILabel")
+                // Close any previous template definitions
+                while (templateCaptureStack.length > 0) {
+                    templateCaptureStack.pop();
+                }
+                inTemplateDefinition = false;
+                templateIndent = -1;
+                
                 inTemplateDefinition = true;
                 templateIndent = indent;
                 
@@ -120,6 +155,16 @@ function parseOTUICode(code, widgetDefinitions = {}) {
                 captureCurrentLine();
                 continue;
             } else {
+                // This is a widget instance (not a template)
+                // If we're capturing a template and this is at root level (indent 0), close the template
+                if (inTemplateDefinition && indent === 0) {
+                    inTemplateDefinition = false;
+                    templateIndent = -1;
+                    while (templateCaptureStack.length > 0) {
+                        templateCaptureStack.pop();
+                    }
+                }
+                
                 if (inTemplateDefinition) {
                     const uiType = getWidgetTypeFromOTUI(widgetTypeName, widgetDefinitions);
                     const widget = {

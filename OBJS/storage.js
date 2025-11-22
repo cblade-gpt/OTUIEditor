@@ -69,6 +69,7 @@ function areCookiesEnabled() {
 // Set a cookie with expiry
 function setCookie(name, value, days) {
     const isConsentCookie = name === 'otui_builder_cookie_consent';
+    // Allow setting consent cookie without consent (chicken and egg problem)
     if (!cookieConsentGiven && !isConsentCookie) {
         console.warn('Cookie consent not given. Cannot set cookie:', name);
         return false;
@@ -86,6 +87,7 @@ function setCookie(name, value, days) {
         console.error('Error setting cookie:', e);
     }
     
+    // Always use localStorage fallback (works even without cookie consent for consent cookie)
     return setLocalStorageCookie(name, value, days || COOKIE_EXPIRY_DAYS);
 }
 
@@ -144,7 +146,9 @@ function setCookieConsent(accepted) {
 
 // Initialize cookie consent on page load
 function initCookieConsent() {
-    if (hasCookieConsent()) {
+    // Check for existing consent
+    const consent = getCookie('otui_builder_cookie_consent');
+    if (consent === 'accepted') {
         cookieConsentGiven = true;
         // Hide consent dialog if already accepted
         const consentDialog = document.getElementById('cookieConsentDialog');
@@ -152,6 +156,7 @@ function initCookieConsent() {
             consentDialog.style.display = 'none';
         }
     } else {
+        cookieConsentGiven = false;
         // Show consent dialog
         const consentDialog = document.getElementById('cookieConsentDialog');
         if (consentDialog) {
@@ -187,9 +192,12 @@ function saveWidgetTemplate(widget, name) {
         const templates = getWidgetTemplates();
         
         // Add or update template
+        // Store the base type (what the widget actually is) and the template name
+        const baseType = widget.dataset.baseType || widget.dataset.type;
         templates[name] = {
             name: name,
-            type: widget.dataset.type,
+            type: widget.dataset.type, // Original type (may be custom)
+            baseType: baseType, // Base type for creating the widget
             data: widgetData,
             childCount: childCount, // Store child count for display
             savedAt: new Date().toISOString()
@@ -206,7 +214,18 @@ function saveWidgetTemplate(widget, name) {
         }
         
         const templatesJson = JSON.stringify(templates);
-        return setCookie('otui_builder_widget_templates', templatesJson, COOKIE_EXPIRY_DAYS);
+        const saved = setCookie('otui_builder_widget_templates', templatesJson, COOKIE_EXPIRY_DAYS);
+        
+        // Verify the template was saved by reading it back
+        if (saved) {
+            const verify = getWidgetTemplates();
+            if (!verify[name]) {
+                console.error('Template saved but not found on readback');
+                return false;
+            }
+        }
+        
+        return saved;
     } catch (e) {
         console.error('Error saving widget template:', e);
         showToast('Error saving widget template: ' + e.message);
@@ -218,8 +237,13 @@ function saveWidgetTemplate(widget, name) {
 function getWidgetTemplates() {
     try {
         const templatesJson = getCookie('otui_builder_widget_templates');
-        if (!templatesJson) return {};
-        return JSON.parse(templatesJson);
+        if (!templatesJson) {
+            console.log('No templates found in cookie');
+            return {};
+        }
+        const templates = JSON.parse(templatesJson);
+        console.log('Loaded templates:', Object.keys(templates));
+        return templates;
     } catch (e) {
         console.error('Error getting widget templates:', e);
         return {};
@@ -238,6 +262,20 @@ function loadWidgetTemplate(name) {
         
         // Deserialize and create widget
         const widget = deserializeWidget(template.data);
+        
+        // CRITICAL: Mark this widget as a template for code generation
+        // Store the template name and base type so code generator outputs "TemplateName < BaseType"
+        if (widget) {
+            widget.dataset._isTemplate = 'true';
+            widget.dataset._templateName = name;
+            // Store the base type (what the widget actually is)
+            const baseType = template.baseType || template.type;
+            widget.dataset._templateBaseType = baseType;
+            // Ensure type is set to template name for code generation
+            widget.dataset.type = name; // Template name (e.g., "test")
+            widget.dataset.baseType = baseType; // Base type (e.g., "UIMiniWindow")
+        }
+        
         return widget;
     } catch (e) {
         console.error('Error loading widget template:', e);

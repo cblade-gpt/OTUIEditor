@@ -223,6 +223,7 @@ body {
     border-right: none;
     border-left: 1px solid rgba(51, 65, 85, 0.4);
     box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+    max-width: calc(100vw - 260px - 400px); /* Prevent overflow: viewport - left sidebar - min workspace */
 }
 
 /* Resize handle for right sidebar */
@@ -649,14 +650,21 @@ body {
 .panel-content {
     padding: 0.75rem;
     background: var(--bg-secondary);
+    min-width: 0; /* Allow shrinking below content size */
+    overflow-x: hidden; /* Prevent horizontal overflow */
+    width: 100%; /* Take full width of parent */
+    box-sizing: border-box; /* Include padding in width calculation */
 }
 
 /* HIERARCHY */
 .hierarchy-tree {
     max-height: 280px;
     overflow-y: auto;
+    overflow-x: hidden; /* Prevent horizontal overflow */
     font-size: 0.8rem;
     margin-top: 0.4rem;
+    width: 100%;
+    min-width: 0; /* Allow shrinking below content size */
 }
 
 .tree-node {
@@ -668,6 +676,9 @@ body {
     transition: background 0.2s;
     gap: 6px;
     font-size: 0.8rem;
+    min-width: 0; /* Allow shrinking */
+    width: fit-content; /* Fit content, don't expand parent */
+    max-width: 100%; /* But don't exceed parent */
 }
 
 .tree-node:hover {
@@ -684,6 +695,9 @@ body {
     list-style: none;
     border-left: 1px dashed var(--border-light);
     padding-left: 10px;
+    min-width: 0; /* Allow shrinking */
+    width: fit-content; /* Fit content */
+    max-width: 100%; /* But don't exceed parent */
 }
 
 .tree-node input {
@@ -691,16 +705,24 @@ body {
     border: 1px solid transparent;
     color: inherit;
     font: inherit;
-    width: 100%;
+    min-width: 80px; /* Minimum width for usability */
+    max-width: 100%; /* Don't exceed parent */
+    width: auto; /* Fit content instead of 100% */
+    flex: 0 1 auto; /* Don't grow, allow shrinking */
     padding: 2px 6px;
     border-radius: var(--radius-sm);
     transition: all 0.2s;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .tree-node input:focus {
     background: rgba(255,255,255,0.15);
     border-color: var(--primary);
     outline: none;
+    width: auto; /* Still fit content when focused */
+    min-width: 80px; /* But maintain minimum */
 }
 
 /* CODE PANEL */

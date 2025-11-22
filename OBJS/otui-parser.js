@@ -327,6 +327,22 @@ function buildWidgetMapping() {
         });
     }
     
+    // Add explicit OTUI name mappings (OTUI -> UIWidget)
+    const explicitMappings = {
+        'VerticalScrollBar': 'UIScrollBar',
+        'HorizontalScrollBar': 'UIScrollBar',
+        'ScrollBar': 'UIScrollBar',
+        'MainWindow': 'UIWindow',
+        'GameLabel': 'UILabel',
+        'FlatPanel': 'UIPanel',
+        'ButtonBox': 'UIButtonBox',
+        'TextList': 'UITextList',
+        'ComboBox': 'UIComboBox',
+        'HorizontalSeparator': 'UIHorizontalSeparator',
+        'VerticalSeparator': 'UIVerticalSeparator'
+    };
+    Object.assign(mapping, explicitMappings);
+    
     return mapping;
 }
 
@@ -337,9 +353,29 @@ function getWidgetTypeFromOTUI(otuiName) {
         widgetMapping = buildWidgetMapping();
     }
     
-    // Check direct mapping
+    // Check direct mapping first (handles VerticalScrollBar -> UIScrollBar, etc.)
     if (widgetMapping[otuiName]) {
         return widgetMapping[otuiName];
+    }
+    
+    // Check reverse mapping (OTUI name -> UIWidget name)
+    // VerticalScrollBar should map to UIScrollBar
+    const reverseMapping = {
+        'VerticalScrollBar': 'UIScrollBar',
+        'HorizontalScrollBar': 'UIScrollBar',
+        'ScrollBar': 'UIScrollBar',
+        'MainWindow': 'UIWindow',
+        'GameLabel': 'UILabel',
+        'FlatPanel': 'UIPanel',
+        'ButtonBox': 'UIButtonBox',
+        'TextList': 'UITextList',
+        'ComboBox': 'UIComboBox',
+        'HorizontalSeparator': 'UIHorizontalSeparator',
+        'VerticalSeparator': 'UIVerticalSeparator',
+        'ScrollablePanel': 'UIScrollArea'
+    };
+    if (reverseMapping[otuiName]) {
+        return reverseMapping[otuiName];
     }
     
     // Use style loader's mapping if available
@@ -430,13 +466,21 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
             return null;
         }
         
-        
-        // If this is a custom widget with inheritance, store the original type name for code generation
-        // The widget will behave like the base type but output the original name in code
-        if (isCustomWidget) {
-            // Store the original custom type name (e.g., "CharmItem") for code generation
+        // CRITICAL: Preserve original OTUI type name for code generation
+        // If originalTypeName exists and differs from the mapped type, store it for code generation
+        // This ensures "VerticalScrollBar" outputs as "VerticalScrollBar" not "UIScrollBar"
+        if (widgetData.originalTypeName && widgetData.originalTypeName !== widgetTypeToCreate) {
+            // Store the original OTUI name (e.g., "VerticalScrollBar") for code generation
+            widget.dataset.type = widgetData.originalTypeName; // Original OTUI name
+            widget.dataset.baseType = widgetTypeToCreate; // Mapped type used to create (e.g., "UIScrollBar")
+        } else if (isCustomWidget) {
+            // If this is a custom widget with inheritance, store the original type name for code generation
+            // The widget will behave like the base type but output the original name in code
             widget.dataset.type = widgetData.type; // Original name (e.g., "CharmItem")
             widget.dataset.baseType = widgetTypeToCreate; // Base type used to create (e.g., "UICheckBox")
+        } else {
+            // For regular widgets, ensure type is set correctly
+            widget.dataset.type = widgetData.originalTypeName || widgetData.type || widgetTypeToCreate;
         }
         
         // Set initial position (will be adjusted by anchors if present)
@@ -547,7 +591,8 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
         
         // Apply properties
         const specialProps = {};
-        Object.entries(widgetData.properties).forEach(([key, value]) => {
+        
+        Object.entries(widgetData.properties || {}).forEach(([key, value]) => {
             // Skip size (handled separately)
             if (key === 'width') {
                 const sizeValue = parseInt(value);
@@ -688,36 +733,42 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
             // This ensures imported OTUI code maintains its exact sizes
             if (importedWidth !== null && widget.dataset._importedWidth) {
                 const preservedWidth = parseInt(widget.dataset._importedWidth);
-                if (parseInt(widget.style.width) !== preservedWidth) {
+                const currentWidth = parseInt(widget.style.width);
+                if (currentWidth !== preservedWidth) {
                     widget.style.width = `${preservedWidth}px`;
                 }
             }
             if (importedHeight !== null && widget.dataset._importedHeight) {
                 const preservedHeight = parseInt(widget.dataset._importedHeight);
-                if (parseInt(widget.style.height) !== preservedHeight) {
+                const currentHeight = parseInt(widget.style.height);
+                if (currentHeight !== preservedHeight) {
                     widget.style.height = `${preservedHeight}px`;
                 }
             }
         }
         
-        // Apply anchors AFTER styles are applied (so parent padding is correct)
-        // This ensures anchor calculations use the correct parent padding
-        if (parent && parent.classList && parent.classList.contains('widget')) {
-            // Wait for DOM to be ready and parent styles to be applied
-            requestAnimationFrame(() => {
-                // Clear anchor update map for this widget
-                anchorUpdateMap.delete(widget);
-                applyAnchorsToWidget(widget, widgetData, parent);
-            });
-        }
-        
-        // Create children - children are always positioned using anchors relative to parent
-        // Don't use absolute positioning for children
+        // Create children FIRST (before applying anchors)
+        // This ensures all widgets exist in the DOM before anchor calculations
         widgetData.children.forEach((childData) => {
             // Pass 0, 0 for children - they will be positioned by anchors
             const childWidget = createWidgetRecursive(childData, widget, 0, 0);
             // Children are added to parent, no need to track Y position
         });
+        
+        // Apply anchors AFTER all children are created and styles are applied
+        // This ensures anchor calculations use correct parent and sibling dimensions
+        if (parent && parent.classList && parent.classList.contains('widget')) {
+            // Use setTimeout to ensure all widgets are in DOM and styles are applied
+            // This is critical for correct anchor calculations
+            setTimeout(() => {
+                // Clear anchor update map for this widget
+                anchorUpdateMap.delete(widget);
+                // Force a reflow to ensure dimensions are calculated
+                void widget.offsetWidth;
+                void parent.offsetWidth;
+                applyAnchorsToWidget(widget, widgetData, parent);
+            }, 0);
+        }
         
         return widget;
     }
@@ -731,17 +782,44 @@ function createWidgetsFromOTUI(widgets, parentElement = null, startX = 50, start
         }
     });
     
-    requestAnimationFrame(() => {
+    // CRITICAL: Apply anchors AFTER all widgets are created and styled
+    // This ensures parent widgets have correct dimensions before child anchors are calculated
+    // Apply anchors in multiple passes: first pass for root widgets, then recursively for children
+    function applyAllAnchors() {
+        // Force a reflow to ensure all styles are applied and dimensions are calculated
+        createdWidgets.forEach(w => void w.offsetWidth);
+        
+        // Apply anchors starting from root widgets, then children
         createdWidgets.forEach(widget => {
-            const parentElement = widget.parentElement;
-            if (!parentElement || !parentElement.classList || !parentElement.classList.contains('widget')) {
-                return;
-            }
             const widgetData = widget.dataset._widgetData ? JSON.parse(widget.dataset._widgetData) : null;
             if (!widgetData) return;
-            anchorUpdateMap.delete(widget);
-            applyAnchorsToWidget(widget, widgetData, parentElement);
+            
+            const parentElement = widget.parentElement;
+            if (parentElement && parentElement.classList && parentElement.classList.contains('widget')) {
+                // This is a child widget - apply anchors relative to parent
+                anchorUpdateMap.delete(widget);
+                applyAnchorsToWidget(widget, widgetData, parentElement);
+            }
         });
+        
+        // Second pass: update any widgets that depend on other widgets (e.g., anchors.top: prev.bottom)
+        createdWidgets.forEach(widget => {
+            const widgetData = widget.dataset._widgetData ? JSON.parse(widget.dataset._widgetData) : null;
+            if (!widgetData) return;
+            
+            const parentElement = widget.parentElement;
+            if (parentElement && parentElement.classList && parentElement.classList.contains('widget')) {
+                anchorUpdateMap.delete(widget);
+                applyAnchorsToWidget(widget, widgetData, parentElement);
+            }
+        });
+    }
+    
+    requestAnimationFrame(() => {
+        // Wait for styles to be fully applied
+        setTimeout(() => {
+            applyAllAnchors();
+        }, 50); // Small delay to ensure styles are fully applied
     });
     
     return createdWidgets;

@@ -761,6 +761,7 @@ function applyOTUIStyleToWidget(widget, widgetType) {
         return false;
     }
     
+    
     const styleObj = getStyleForWidget(widgetType);
     if (!styleObj) {
         // No style found - styles might not be loaded or widget type doesn't have a style
@@ -770,6 +771,7 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     // Get the actual style object (not just resolved properties) - safe lookup
     const styleName = widgetType ? widgetType.replace('UI', '') : '';
     const fullStyle = (loadedStyles && styleName) ? loadedStyles[styleName] : null;
+    
     
     // Merge base style with state-specific style (e.g., $checked, $unchecked)
     let style = styleObj ? { ...styleObj } : {};
@@ -825,12 +827,89 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     // Remove default builder styles that might interfere
     widget.style.borderRadius = '0'; // OTUI widgets typically don't use border-radius
     
-    // Check for image-clip and image-rect FIRST (even without image-source) to enforce size
+    // CRITICAL: Check for explicit width/height properties FIRST
+    // These take precedence over image-clip/image-rect for widget sizing
+    // icon-rect is NOT used for sizing - it's only for icon positioning
+    // IMPORTANT: Check BOTH style object AND widget dataset/properties
+    // Width/height might be in the style definition OR in the widget's dataset (from OTUI import)
+    // CRITICAL: Ignore obviously invalid values (0 or very small like 1-3) that are likely from child widgets or defaults
+    let explicitWidth = null;
+    let explicitHeight = null;
+    if (style.width !== undefined) {
+        const styleWidth = parseInt(style.width, 10);
+        // Only use if it's a reasonable size (>= 10px) - ignore 0, 1, 2, 3 which are likely from child widgets or defaults
+        if (!isNaN(styleWidth) && styleWidth >= 10) {
+            explicitWidth = styleWidth;
+        }
+    }
+    if (style.height !== undefined) {
+        const styleHeight = parseInt(style.height, 10);
+        // Only use if it's a reasonable size (>= 10px) - ignore 0, 1, 2, 3 which are likely from child widgets or defaults
+        if (!isNaN(styleHeight) && styleHeight >= 10) {
+            explicitHeight = styleHeight;
+        }
+    }
+    
+    
+    // Also check widget dataset for width/height (from OTUI import or properties)
+    if ((!explicitWidth || isNaN(explicitWidth)) && widget.dataset.width) {
+        explicitWidth = parseInt(widget.dataset.width, 10);
+    }
+    if ((!explicitHeight || isNaN(explicitHeight)) && widget.dataset.height) {
+        explicitHeight = parseInt(widget.dataset.height, 10);
+    }
+    
+    // Also check for imported width/height (from OTUI parser)
+    if ((!explicitWidth || isNaN(explicitWidth)) && widget.dataset._importedWidth) {
+        explicitWidth = parseInt(widget.dataset._importedWidth, 10);
+    }
+    if ((!explicitHeight || isNaN(explicitHeight)) && widget.dataset._importedHeight) {
+        explicitHeight = parseInt(widget.dataset._importedHeight, 10);
+    }
+    
+    const hasExplicitWidth = !isNaN(explicitWidth) && explicitWidth !== null && explicitWidth > 0;
+    const hasExplicitHeight = !isNaN(explicitHeight) && explicitHeight !== null && explicitHeight > 0;
+    const hasExplicitSize = hasExplicitWidth && hasExplicitHeight;
+    
+    // Apply explicit width/height IMMEDIATELY if present (before clip processing)
+    // This ensures they take precedence over any image-clip/image-rect
+    // CRITICAL: Even if userWidthOverride is true, we must still set explicitWidthApplied
+    // to prevent image-clip logic from overriding the size
+    if (hasExplicitWidth) {
+        // ALWAYS set explicitWidthApplied flag FIRST to prevent image-clip from overriding
+        // This is critical even when userWidthOverride is true
+        widget.dataset.explicitWidthApplied = 'true';
+        
+        const currentWidth = parseInt(widget.style.width) || 0;
+        // CRITICAL: Always apply explicit width if it doesn't match current width
+        // This ensures imported OTUI dimensions are preserved even if styles try to override
+        if (currentWidth !== explicitWidth) {
+            widget.style.width = `${explicitWidth}px`;
+            widget.dataset.width = String(explicitWidth);
+        }
+    }
+    if (hasExplicitHeight) {
+        // ALWAYS set explicitHeightApplied flag FIRST to prevent image-clip from overriding
+        // This is critical even when userHeightOverride is true
+        widget.dataset.explicitHeightApplied = 'true';
+        
+        const currentHeight = parseInt(widget.style.height) || 0;
+        // CRITICAL: Always apply explicit height if it doesn't match current height
+        // This ensures imported OTUI dimensions are preserved even if styles try to override
+        if (currentHeight !== explicitHeight) {
+            widget.style.height = `${explicitHeight}px`;
+            widget.dataset.height = String(explicitHeight);
+        }
+    }
+    
+    // Check for image-clip and image-rect (even without image-source) to enforce size
+    // BUT: Only use for sizing if width/height are NOT explicitly set
     // This applies to ALL widgets with image-clip/image-rect, regardless of whether image is loaded
     // IMPORTANT: Check state-specific style FIRST, then base style
     // Checkboxes may have different clips for $checked vs $unchecked states
     // We need to check states BEFORE merging because state image-clip/image-rect should take precedence
     // image-rect works the same as image-clip: x y width height
+    // NOTE: icon-rect is NOT the same - it's for icon positioning, NOT widget sizing
     let imageClip = null;
     let imageRect = null;
     
@@ -858,12 +937,20 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     }
     
     // If no state clip/rect found, check merged style (base style)
+    // CRITICAL: Do NOT use icon-rect for sizing - it's only for icon positioning
+    // icon-rect and image-rect are DIFFERENT properties - icon-rect is for icon positioning only
     if (!imageClip) {
         imageClip = style['image-clip'];
+        // Explicitly exclude icon-rect - it's NOT the same as image-clip
+        // icon-rect is ONLY for icon positioning, NEVER for widget sizing
     }
     if (!imageRect) {
         imageRect = style['image-rect'];
+        // CRITICAL: Do NOT use icon-rect as image-rect - they are completely different
+        // icon-rect is for icon positioning, image-rect is for image clipping/sizing
+        // We only check style['image-rect'], never style['icon-rect']
     }
+    
     
     // image-rect takes precedence over image-clip if both are present
     // Use image-rect if available, otherwise use image-clip
@@ -882,9 +969,18 @@ function applyOTUIStyleToWidget(widget, widgetType) {
             clipH = parseInt(clipParts[3] || '0', 10);
             hasClip = clipW > 0 && clipH > 0;
             
-            // ALWAYS set size to clip dimensions if we have clip (for ALL widgets)
+            // Set size to clip dimensions if we have clip (for ALL widgets)
             // This applies to buttons, checkboxes, separators, etc.
-            if (hasClip) {
+            // BUT: ONLY if width/height are NOT explicitly set in the style
+            // AND: Respect user overrides - if user manually set size via properties, preserve it
+            // CRITICAL: Check if explicit width/height were already applied
+            // DOUBLE-CHECK: Also verify that we actually have explicit dimensions to prevent clip override
+            const explicitWidthApplied = widget.dataset.explicitWidthApplied === 'true';
+            const explicitHeightApplied = widget.dataset.explicitHeightApplied === 'true';
+            const hasExplicitDimensions = hasExplicitWidth || hasExplicitHeight;
+            
+            // NEVER use clip dimensions if explicit width/height exist (even if flags aren't set correctly)
+            if (hasClip && !explicitWidthApplied && !explicitHeightApplied && !hasExplicitDimensions) {
                 // Remove min-width/min-height restrictions for clipped widgets
                 // This is critical for separators which are often 1-3px
                 widget.style.minWidth = '0';
@@ -892,10 +988,48 @@ function applyOTUIStyleToWidget(widget, widgetType) {
                 widget.style.maxWidth = 'none';
                 widget.style.maxHeight = 'none';
                 
-                // ALWAYS set size to clip dimensions - override any preserved sizes
-                // This ensures separators, buttons, checkboxes all show the correct clipped size
-                widget.style.width = `${clipW}px`;
-                widget.style.height = `${clipH}px`;
+                // CRITICAL: Check if user has manually overridden size via properties
+                // If userWidthOverride/userHeightOverride is set, preserve user's size
+                const userWidthOverride = widget.dataset.userWidthOverride === 'true';
+                const userHeightOverride = widget.dataset.userHeightOverride === 'true';
+                
+                // For very small widgets (like 11x11, 13x13, 16x16), ensure they're at least 32x32 for usability
+                // This makes them visible and editable in the builder
+                // But only if user hasn't manually set a size
+                const minUsableSize = 32; // Increased from 20 to 32 for better visibility
+                const currentWidth = parseInt(widget.style.width) || 0;
+                const currentHeight = parseInt(widget.style.height) || 0;
+                
+                // CRITICAL: If explicit width/height were applied, NEVER override with clip size
+                // This prevents icon-rect or image-clip from overriding explicit dimensions
+                if (!explicitWidthApplied && !userWidthOverride) {
+                    // Only set width from clip if explicit width wasn't applied and user hasn't overridden it
+                    // Use the larger of clip size or minimum usable size
+                    const finalWidth = Math.max(clipW, minUsableSize);
+                    widget.style.width = `${finalWidth}px`;
+                    // Store that we applied a minimum size so user can still resize
+                    widget.dataset._appliedMinSize = 'true';
+                } else if (!explicitWidthApplied && userWidthOverride && currentWidth > 0) {
+                    // User has overridden - use their size (but only if it's actually set)
+                    widget.style.width = `${currentWidth}px`;
+                }
+                // If explicitWidthApplied is true, do nothing - width was already set correctly above
+                
+                if (!explicitHeightApplied && !userHeightOverride) {
+                    // Only set height from clip if explicit height wasn't applied and user hasn't overridden it
+                    // Use the larger of clip size or minimum usable size
+                    const finalHeight = Math.max(clipH, minUsableSize);
+                    widget.style.height = `${finalHeight}px`;
+                    widget.dataset._appliedMinSize = 'true';
+                } else if (!explicitHeightApplied && userHeightOverride && currentHeight > 0) {
+                    // User has overridden - use their size (but only if it's actually set)
+                    widget.style.height = `${currentHeight}px`;
+                }
+                // If explicitHeightApplied is true, do nothing - height was already set correctly above
+                
+                // Ensure minimum size for usability (but allow resizing smaller if user wants)
+                widget.style.minWidth = '0';
+                widget.style.minHeight = '0';
                 
                 // Store clip info - will be used when image is loaded
                 widget.dataset.clipSizeApplied = 'true';
@@ -1344,6 +1478,16 @@ function applyOTUIStyleToWidget(widget, widgetType) {
             widget.style.maxHeight = 'none';
         }
         
+        // Ensure explicit width/height are set (they were applied earlier, but ensure min/max are cleared)
+        if (hasExplicitWidth) {
+            widget.style.minWidth = '0';
+            widget.style.maxWidth = 'none';
+        }
+        if (hasExplicitHeight) {
+            widget.style.minHeight = '0';
+            widget.style.maxHeight = 'none';
+        }
+        
         // Restore preserved dimensions if they were custom (but not if clip size was applied)
         // For separators, only restore the resizable dimension
         if (isSeparator) {
@@ -1369,27 +1513,33 @@ function applyOTUIStyleToWidget(widget, widgetType) {
         }
     } else {
         // For widgets with image-clip, ensure min-width/min-height are removed
-        // AND ensure size property doesn't override clip dimensions
+        // BUT: Only apply clip size if explicit width/height were NOT set
+        // If explicit width/height were set, they take precedence over image-clip
         widget.style.minWidth = '0';
         widget.style.minHeight = '0';
         widget.style.maxWidth = 'none';
         widget.style.maxHeight = 'none';
         
-        // Re-enforce clip size - size property should NEVER override image-clip
-        const clipW = parseInt(widget.dataset.clipWidth || '0', 10);
-        const clipH = parseInt(widget.dataset.clipHeight || '0', 10);
-        if (clipW > 0 && clipH > 0) {
-            // Only set if user hasn't manually resized (check if current size matches clip)
-            const currentW = parseInt(widget.style.width) || 0;
-            const currentH = parseInt(widget.style.height) || 0;
-            // If size was overridden by style.size, reset it to clip dimensions
-            if (currentW !== clipW || currentH !== clipH) {
-                // Check if this is a preserved user resize or an override
-                if (!preservedWidth || preservedWidth === '140px' || preservedWidth === 'auto' || preservedWidth === '') {
-                    widget.style.width = `${clipW}px`;
-                }
-                if (!preservedHeight || preservedHeight === '90px' || preservedHeight === 'auto' || preservedHeight === '') {
-                    widget.style.height = `${clipH}px`;
+        // Only re-enforce clip size if explicit width/height were NOT applied
+        const explicitWidthApplied = widget.dataset.explicitWidthApplied === 'true';
+        const explicitHeightApplied = widget.dataset.explicitHeightApplied === 'true';
+        
+        if (!explicitWidthApplied || !explicitHeightApplied) {
+            const clipW = parseInt(widget.dataset.clipWidth || '0', 10);
+            const clipH = parseInt(widget.dataset.clipHeight || '0', 10);
+            if (clipW > 0 && clipH > 0) {
+                // Only set if user hasn't manually resized and explicit size wasn't applied
+                const currentW = parseInt(widget.style.width) || 0;
+                const currentH = parseInt(widget.style.height) || 0;
+                // If size was overridden by style.size, reset it to clip dimensions
+                if (currentW !== clipW || currentH !== clipH) {
+                    // Check if this is a preserved user resize or an override
+                    if (!explicitWidthApplied && (!preservedWidth || preservedWidth === '140px' || preservedWidth === 'auto' || preservedWidth === '')) {
+                        widget.style.width = `${clipW}px`;
+                    }
+                    if (!explicitHeightApplied && (!preservedHeight || preservedHeight === '90px' || preservedHeight === 'auto' || preservedHeight === '')) {
+                        widget.style.height = `${clipH}px`;
+                    }
                 }
             }
         }

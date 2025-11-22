@@ -211,11 +211,104 @@ window.initOTUIBuilder = function() {
     }
 
     const content = document.getElementById('editorContent');
+    const workspace = document.querySelector('.workspace');
+    const canvasWrapper = document.querySelector('.canvas-wrapper');
+    
+    // Allow drops on the entire workspace area (not just editorContent)
+    // This fixes the issue where widgets can't be dropped below the toolbar (red line)
+    function handleDragOver(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    function handleDropAnywhere(e) {
+        // Only handle if it's a widget drop
+        const type = e.dataTransfer.getData('text/plain');
+        if (!type || !OTUI_WIDGETS[type]) {
+            return; // Not a widget drop, let other handlers deal with it
+        }
+        
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // Calculate drop position relative to editorContent
+        const content = document.getElementById('editorContent');
+        if (!content) return;
+        
+        const contentRect = content.getBoundingClientRect();
+        
+        // Get mouse position relative to editorContent (accounting for zoom)
+        let x = (e.clientX - contentRect.left) / zoomLevel;
+        let y = (e.clientY - contentRect.top) / zoomLevel;
+        
+        // Ensure position is within content bounds (accounting for padding)
+        const padding = 32; // 2rem = 32px
+        x = Math.max(padding, x - 70);
+        y = Math.max(padding, y - 45);
+        
+        if (snapToGrid) { 
+            x = Math.round(x / 20) * 20; 
+            y = Math.round(y / 20) * 20; 
+        }
+        
+        // Check if dropping into a container widget
+        const elementsUnderMouse = document.elementsFromPoint(e.clientX, e.clientY);
+        let targetParent = content;
+        
+        for (let el of elementsUnderMouse) {
+            if (el.classList && el.classList.contains('widget') && el.classList.contains('container')) {
+                if (el.id !== 'editorContent') {
+                    targetParent = el;
+                    const parentRect = el.getBoundingClientRect();
+                    x = (e.clientX - parentRect.left) / zoomLevel;
+                    y = (e.clientY - parentRect.top) / zoomLevel;
+                    break;
+                }
+            }
+        }
+        
+        const widget = createWidget(type);
+        if (!widget) return;
+        
+        // CRITICAL: After widget is created, apply OTUI styles to get correct size
+        // This ensures dragged widgets match their property sizes from OTUI files
+        if (window.OTUIStyleLoader && window.OTUIStyleLoader.applyOTUIStyleToWidget) {
+            const widgetType = widget.dataset.type;
+            if (widgetType) {
+                // Apply styles immediately to get correct size
+                window.OTUIStyleLoader.applyOTUIStyleToWidget(widget, widgetType);
+                // Force a reflow to ensure size is applied
+                void widget.offsetHeight;
+            }
+        }
+        
+        widget.style.left = `${x}px`;
+        widget.style.top = `${y}px`;
+        targetParent.appendChild(widget);
+        selectWidget(widget);
+        saveState();
+        updateAll();
+    }
+    
     if (content) {
-        content.addEventListener('dragover', e => e.preventDefault());
-        content.addEventListener('drop', handleDrop);
+        content.addEventListener('dragover', handleDragOver);
+        content.addEventListener('drop', handleDropAnywhere);
         content.addEventListener('click', () => selectWidget(null));
     }
+    
+    // Also allow drops on workspace toolbar and canvas wrapper
+    if (workspace) {
+        workspace.addEventListener('dragover', handleDragOver);
+        workspace.addEventListener('drop', handleDropAnywhere);
+    }
+    
+    if (canvasWrapper) {
+        canvasWrapper.addEventListener('dragover', handleDragOver);
+        canvasWrapper.addEventListener('drop', handleDropAnywhere);
+    }
+    
+    // Keep the old handleDrop for backwards compatibility
+    window.handleDrop = handleDropAnywhere;
 
     // Keyboard shortcuts
     document.addEventListener('keydown', e => {
@@ -1159,7 +1252,15 @@ window.initOTUIBuilder = function() {
         // Load saved width from localStorage
         const savedWidth = localStorage.getItem('rightSidebarWidth');
         if (savedWidth) {
-            rightSidebar.style.width = savedWidth + 'px';
+            // Calculate maximum width based on viewport
+            const leftSidebar = document.querySelector('.sidebar-left');
+            const leftSidebarWidth = leftSidebar ? leftSidebar.offsetWidth : 260;
+            const minWorkspaceWidth = 400;
+            const maxWidth = window.innerWidth - leftSidebarWidth - minWorkspaceWidth;
+            
+            // Ensure saved width doesn't exceed maximum
+            const width = Math.min(parseInt(savedWidth) || 260, maxWidth);
+            rightSidebar.style.width = Math.max(200, width) + 'px';
         }
         
         let isResizing = false;
@@ -1179,7 +1280,16 @@ window.initOTUIBuilder = function() {
             if (!isResizing) return;
             
             const diff = startX - e.clientX; // Inverted because we're resizing from left
-            const newWidth = Math.max(200, Math.min(800, startWidth + diff)); // Min 200px, max 800px
+            
+            // Calculate maximum width based on viewport
+            // Account for left sidebar (260px) and minimum workspace width (400px)
+            const leftSidebar = document.querySelector('.sidebar-left');
+            const leftSidebarWidth = leftSidebar ? leftSidebar.offsetWidth : 260;
+            const minWorkspaceWidth = 400;
+            const maxWidth = window.innerWidth - leftSidebarWidth - minWorkspaceWidth;
+            
+            // Min 200px, max based on available viewport space
+            const newWidth = Math.max(200, Math.min(maxWidth, startWidth + diff));
             
             rightSidebar.style.width = newWidth + 'px';
         });
@@ -1220,10 +1330,12 @@ window.initOTUIBuilder = function() {
                 if (widgetLibraryModal && widgetLibraryModal.dataset.pendingOpen === 'true') {
                     widgetLibraryModal.style.display = 'flex';
                     widgetLibraryModal.dataset.pendingOpen = 'false';
-                    // Refresh templates list if function exists
-                    if (typeof refreshWidgetTemplatesList === 'function') {
-                        refreshWidgetTemplatesList();
-                    }
+                    // Refresh templates list (function is defined in same scope)
+                    setTimeout(() => {
+                        if (typeof refreshWidgetTemplatesList === 'function') {
+                            refreshWidgetTemplatesList();
+                        }
+                    }, 100);
                 }
                 
                 // Check for saved progress
@@ -1318,10 +1430,16 @@ window.initOTUIBuilder = function() {
                 return;
             }
             
-            if (window.OTUIStorage.saveWidgetTemplate(selectedWidget, templateName)) {
+            const saved = window.OTUIStorage.saveWidgetTemplate(selectedWidget, templateName);
+            if (saved) {
                 showToast(`Template "${templateName}" saved!`);
                 saveWidgetNameInput.value = '';
-                refreshWidgetTemplatesList();
+                // Small delay to ensure cookie/localStorage is written
+                setTimeout(() => {
+                    refreshWidgetTemplatesList();
+                }, 100);
+            } else {
+                showToast('Failed to save template. Please check console for errors.');
             }
         });
         
@@ -1333,12 +1451,17 @@ window.initOTUIBuilder = function() {
         });
     }
     
-    // Refresh widget templates list
-    function refreshWidgetTemplatesList() {
-        if (!widgetTemplatesList || !window.OTUIStorage) return;
+    // Refresh widget templates list (make it globally accessible)
+    window.refreshWidgetTemplatesList = function refreshWidgetTemplatesList() {
+        if (!widgetTemplatesList || !window.OTUIStorage) {
+            console.warn('Cannot refresh templates list: missing elements');
+            return;
+        }
         
         const templates = window.OTUIStorage.getWidgetTemplates();
         const templateKeys = Object.keys(templates);
+        
+        console.log('Refreshing templates list. Found templates:', templateKeys);
         
         if (templateKeys.length === 0) {
             widgetTemplatesList.innerHTML = `
@@ -1355,6 +1478,8 @@ window.initOTUIBuilder = function() {
             const savedDate = new Date(template.savedAt).toLocaleDateString();
             const childCount = template.childCount || 0;
             const isGroup = childCount > 0;
+            // Escape name for use in data attribute (double escaping for safety)
+            const escapedName = escapeHtml(name).replace(/"/g, '&quot;');
             return `
                 <div class="template-item">
                     <div class="template-item-info">
@@ -1364,12 +1489,31 @@ window.initOTUIBuilder = function() {
                         </div>
                     </div>
                     <div class="template-item-actions">
-                        <button class="btn btn-accent" onclick="loadTemplate('${escapeHtml(name)}')">Load</button>
-                        <button class="btn btn-secondary" onclick="deleteTemplate('${escapeHtml(name)}')">Delete</button>
+                        <button class="btn btn-accent" data-template-name="${escapedName}" data-action="load">Load</button>
+                        <button class="btn btn-secondary" data-template-name="${escapedName}" data-action="delete">Delete</button>
                     </div>
                 </div>
             `;
         }).join('');
+        
+        // Attach event listeners to template buttons (safer than onclick)
+        widgetTemplatesList.querySelectorAll('[data-action="load"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const templateName = e.target.getAttribute('data-template-name');
+                if (templateName) {
+                    loadTemplate(templateName);
+                }
+            });
+        });
+        
+        widgetTemplatesList.querySelectorAll('[data-action="delete"]').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const templateName = e.target.getAttribute('data-template-name');
+                if (templateName) {
+                    deleteTemplate(templateName);
+                }
+            });
+        });
     }
     
     // Load template function (global for onclick handlers)

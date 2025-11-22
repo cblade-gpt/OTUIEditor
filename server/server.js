@@ -52,12 +52,12 @@ app.post('/api/parse', async (req, res) => {
 // 2. Generate OTUI Code
 app.post('/api/generate', async (req, res) => {
     try {
-        const { widgetTree, widgetDefinitions, importedTemplates } = req.body;
+        const { widgetTree, widgetDefinitions, importedTemplates, userTemplates } = req.body;
         if (!widgetTree) {
             return res.status(400).json({ error: 'Widget tree is required' });
         }
         
-        const result = codegen.generateOTUICode(widgetTree, widgetDefinitions || {}, importedTemplates || []);
+        const result = codegen.generateOTUICode(widgetTree, widgetDefinitions || {}, importedTemplates || [], userTemplates || []);
         res.json({ success: true, data: result });
     } catch (error) {
         console.error('Generate error:', error);

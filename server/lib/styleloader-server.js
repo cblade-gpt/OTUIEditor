@@ -53,6 +53,21 @@ function parseOTUIFile(content) {
         
         if (!currentStyle) continue;
         
+        // CRITICAL: If we encounter a widget definition (capitalized word at non-zero indent),
+        // stop parsing properties for the current style - this is a child widget, not a property
+        // Widget definitions look like: "UIButton", "Label", etc. (capital letter start, no colon)
+        // Properties have colons (e.g., "width: 178"), so we check for absence of colon
+        const widgetDefMatch = trimmedLine.match(/^[A-Z][A-Za-z0-9_]*$/);
+        if (widgetDefMatch && indent > 0 && !trimmedLine.startsWith('$') && !trimmedLine.includes(':')) {
+            // This is a child widget definition, not a property - stop parsing for this style
+            // Reset to look for a new style definition
+            currentStyle = null;
+            currentState = null;
+            currentStateName = null;
+            baseIndent = 0;
+            continue;
+        }
+        
         if (currentState && indent <= baseIndent && !trimmedLine.startsWith('$')) {
             currentState = null;
             currentStateName = null;
