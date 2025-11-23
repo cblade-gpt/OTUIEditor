@@ -118,20 +118,50 @@ function updateHierarchyTree() {
     tree.innerHTML = '';
     const roots = document.querySelectorAll('#editorContent > .widget');
 
+    // Recursively build node tree - shows ALL nested children at all levels
     function buildNode(w) {
         const node = document.createElement('div');
         node.className = 'tree-node' + (multiSelectedWidgets.has(w) ? ' selected' : '');
+        
+        // Show widget type and ID
+        const label = document.createElement('span');
+        label.textContent = (w.dataset.type || 'Widget').replace('UI', '') + (w.id ? ` (${w.id})` : '');
+        label.style.marginRight = '8px';
+        node.appendChild(label);
+        
         const input = document.createElement('input');
-        input.value = w.id;
+        input.type = 'text';
+        input.value = w.id || '';
+        input.placeholder = 'id';
+        input.style.width = '100px';
         input.onchange = () => { w.id = input.value; updateAll(); };
         node.appendChild(input);
-        node.onclick = e => e.target !== input && selectWidget(w);
+        node.onclick = e => {
+            if (e.target !== input && e.target !== label) {
+                selectWidget(w);
+            }
+        };
 
-        const children = [...w.children].filter(c => c.classList.contains('widget'));
+        // Recursively get ALL children (not just direct children)
+        // This includes children of children, templates, etc.
+        function getAllChildWidgets(parent) {
+            const directChildren = [...parent.children].filter(c => c.classList.contains('widget'));
+            let allChildren = [...directChildren];
+            // Recursively get children of children
+            directChildren.forEach(child => {
+                allChildren = allChildren.concat(getAllChildWidgets(child));
+            });
+            return allChildren;
+        }
+        
+        const children = getAllChildWidgets(w);
         if (children.length) {
             const ul = document.createElement('ul');
+            ul.style.marginLeft = '20px';
+            ul.style.marginTop = '4px';
             children.forEach(c => {
                 const li = document.createElement('li');
+                li.style.listStyle = 'none';
                 li.appendChild(buildNode(c));
                 ul.appendChild(li);
             });
@@ -140,7 +170,12 @@ function updateHierarchyTree() {
         return node;
     }
 
-    roots.forEach(r => tree.appendChild(buildNode(r)));
+    roots.forEach(r => {
+        const container = document.createElement('div');
+        container.style.marginBottom = '8px';
+        container.appendChild(buildNode(r));
+        tree.appendChild(container);
+    });
     fixFormFields();
 }
 
@@ -173,7 +208,16 @@ function updatePropertyEditor() {
         'opacity': { type: 'number', default: 1.0, label: 'Opacity (0.0-1.0)' },
         'color': { type: 'color', default: '', label: 'Text Color' },
         'background': { type: 'color', default: '', label: 'Background Color' },
-        'font': { type: 'text', default: '', label: 'Font (e.g., "12px Tahoma")' }
+        'font': { type: 'text', default: '', label: 'Font (e.g., "12px Tahoma")' },
+        'image-source': { type: 'text', default: '', label: 'Image Source (e.g., /images/ui/button)' },
+        'image-clip': { type: 'text', default: '', label: 'Image Clip (x y width height)' },
+        'image-rect': { type: 'text', default: '', label: 'Image Rect (x y width height)' },
+        'image-border': { type: 'number', default: 0, label: 'Image Border (px)' },
+        'image-border-top': { type: 'number', default: 0, label: 'Image Border Top (px)' },
+        'image-border-bottom': { type: 'number', default: 0, label: 'Image Border Bottom (px)' },
+        'image-border-left': { type: 'number', default: 0, label: 'Image Border Left (px)' },
+        'image-border-right': { type: 'number', default: 0, label: 'Image Border Right (px)' },
+        'image-color': { type: 'color', default: '', label: 'Image Color (tint)' }
     };
 
     // Widget-specific properties
@@ -194,11 +238,16 @@ function updatePropertyEditor() {
         div.className = 'form-group';
         
         // For width/height, get from actual widget dimensions
+        // For image properties, get from dataset (may be set by user or from styles)
         let currentValue;
         if (key === 'width') {
             currentValue = selectedWidget.offsetWidth || selectedWidget.dataset[key] || '';
         } else if (key === 'height') {
             currentValue = selectedWidget.offsetHeight || selectedWidget.dataset[key] || '';
+        } else if (key.startsWith('image-')) {
+            // Image properties are stored in dataset (as camelCase)
+            const camelKey = key.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+            currentValue = selectedWidget.dataset[camelKey] || '';
         } else {
             currentValue = selectedWidget.dataset[key];
         }
@@ -250,13 +299,28 @@ function updatePropertyEditor() {
                     selectedWidget.style[key] = '';
                 }
                 dimensionHandled = true;
+            } else if (key.startsWith('image-')) {
+                // Image properties need camelCase conversion (hyphens not allowed in dataset)
+                const camelKey = key.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+                if (newValue && newValue.trim() !== '') {
+                    selectedWidget.dataset[camelKey] = newValue;
+                } else {
+                    delete selectedWidget.dataset[camelKey];
+                }
+                dimensionHandled = true; // Mark as handled so it doesn't go to the general block
             }
             
             if (!dimensionHandled) {
+                // Convert hyphenated keys to camelCase for dataset (hyphens not allowed)
+                let datasetKey = key;
+                if (key.includes('-')) {
+                    datasetKey = key.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+                }
+                
                 if (propDef.type === 'select') {
-                    selectedWidget.dataset[key] = newValue;
+                    selectedWidget.dataset[datasetKey] = newValue;
                 } else {
-                    selectedWidget.dataset[key] = newValue;
+                    selectedWidget.dataset[datasetKey] = newValue;
                 }
             }
             
@@ -288,6 +352,18 @@ function updatePropertyEditor() {
                     const contentEl = selectedWidget.querySelector('.widget-content');
                     if (contentEl) contentEl.style.font = newValue;
                 }
+            } else if (key.startsWith('image-')) {
+                // Image properties are stored in dataset and will be applied by styleloader
+                // HTML dataset requires camelCase (hyphens are not valid in property names)
+                // Convert 'image-source' to 'imageSource', 'image-border-top' to 'imageBorderTop', etc.
+                const camelKey = key.replace(/-([a-z])/g, (g) => g[1].toUpperCase());
+                if (newValue && newValue.trim() !== '') {
+                    // Use setAttribute for dataset properties with hyphens, or convert to camelCase
+                    selectedWidget.dataset[camelKey] = newValue;
+                } else {
+                    // Remove property if empty
+                    delete selectedWidget.dataset[camelKey];
+                }
             }
             
             if (window.setWidgetDisplayText) {
@@ -295,10 +371,13 @@ function updatePropertyEditor() {
             }
             
             // Reapply styles when properties change (especially for image-source, font, etc.)
+            // This is critical for image properties to be visually applied
             if (window.OTUIStyleLoader && window.OTUIStyleLoader.applyOTUIStyleToWidget) {
                 const type = selectedWidget.dataset.type;
                 if (type) {
-                    // Use requestAnimationFrame to ensure DOM is updated
+                    // Force immediate style application for image properties
+                    // Use requestAnimationFrame to ensure DOM is updated, but also try immediate
+                    window.OTUIStyleLoader.applyOTUIStyleToWidget(selectedWidget, type);
                     requestAnimationFrame(() => {
                         window.OTUIStyleLoader.applyOTUIStyleToWidget(selectedWidget, type);
                     });

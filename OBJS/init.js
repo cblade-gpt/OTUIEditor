@@ -63,9 +63,9 @@ function handleDrop(e) {
     let parent = target.closest('.widget.container') || content;
     const parentRect = parent.getBoundingClientRect();
 
-    let x = (e.clientX - parentRect.left) / zoomLevel - 70;
-    let y = (e.clientY - parentRect.top) / zoomLevel - 45;
-    if (snapToGrid) { x = Math.round(x / 20) * 20; y = Math.round(y / 20) * 20; }
+    let x = (e.clientX - parentRect.left) / (window.zoomLevel || 1) - 70;
+    let y = (e.clientY - parentRect.top) / (window.zoomLevel || 1) - 45;
+    if (window.snapToGrid) { x = Math.round(x / 20) * 20; y = Math.round(y / 20) * 20; }
 
     const widget = createWidget(type);
     if (!widget) return;
@@ -238,15 +238,15 @@ window.initOTUIBuilder = function() {
         const contentRect = content.getBoundingClientRect();
         
         // Get mouse position relative to editorContent (accounting for zoom)
-        let x = (e.clientX - contentRect.left) / zoomLevel;
-        let y = (e.clientY - contentRect.top) / zoomLevel;
+        let x = (e.clientX - contentRect.left) / (window.zoomLevel || 1);
+        let y = (e.clientY - contentRect.top) / (window.zoomLevel || 1);
         
         // Ensure position is within content bounds (accounting for padding)
         const padding = 32; // 2rem = 32px
         x = Math.max(padding, x - 70);
         y = Math.max(padding, y - 45);
         
-        if (snapToGrid) { 
+        if (window.snapToGrid) { 
             x = Math.round(x / 20) * 20; 
             y = Math.round(y / 20) * 20; 
         }
@@ -260,8 +260,8 @@ window.initOTUIBuilder = function() {
                 if (el.id !== 'editorContent') {
                     targetParent = el;
                     const parentRect = el.getBoundingClientRect();
-                    x = (e.clientX - parentRect.left) / zoomLevel;
-                    y = (e.clientY - parentRect.top) / zoomLevel;
+                    x = (e.clientX - parentRect.left) / (window.zoomLevel || 1);
+                    y = (e.clientY - parentRect.top) / (window.zoomLevel || 1);
                     break;
                 }
             }
@@ -407,9 +407,12 @@ window.initOTUIBuilder = function() {
         const grid = document.getElementById('editorGrid');
         if (grid) grid.style.opacity = showGrid ? '0.3' : '0';
     });
-    bind('snapToggleBtn', () => snapToGrid = !snapToGrid);
-    bind('zoomInBtn', () => setZoom(zoomLevel + 0.1));
-    bind('zoomOutBtn', () => setZoom(zoomLevel - 0.1));
+    bind('snapToggleBtn', () => {
+        window.snapToGrid = !window.snapToGrid;
+        snapToGrid = window.snapToGrid; // Update local reference if it exists
+    });
+    bind('zoomInBtn', () => setZoom((window.zoomLevel || 1) + 0.1));
+    bind('zoomOutBtn', () => setZoom((window.zoomLevel || 1) - 0.1));
     bind('zoomResetBtn', () => setZoom(1));
     bind('previewBtn', () => showPreview());
     bind('viewCodeBtn', () => showCodeModal());

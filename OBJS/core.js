@@ -5,10 +5,83 @@ let zoomLevel = 1;
 let snapToGrid = true;
 let showGrid = true;
 let clipboardWidget = null;
+
+// Expose these to window for access from other files
+window.snapToGrid = snapToGrid;
+window.showGrid = showGrid;
+window.zoomLevel = zoomLevel;
 let arrowNudgeInterval = null;
 let arrowNudgeKey = null;
 let arrowNudgeStartTime = 0;
 let arrowNudgeMoved = false;
+let alignmentGuideContainer = null;
+
+// Create alignment guide container
+function createAlignmentGuideContainer() {
+    if (!alignmentGuideContainer) {
+        const content = document.getElementById('editorContent');
+        if (content) {
+            alignmentGuideContainer = document.createElement('div');
+            alignmentGuideContainer.id = 'alignmentGuides';
+            alignmentGuideContainer.style.cssText = 'position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1000; overflow: hidden;';
+            content.appendChild(alignmentGuideContainer);
+        }
+    }
+    return alignmentGuideContainer;
+}
+
+// Show alignment guides (Photoshop-style)
+function showAlignmentGuides(guides) {
+    const container = createAlignmentGuideContainer();
+    if (!container) {
+        console.warn('Alignment guide container not found');
+        return;
+    }
+    
+    // Clear existing guides
+    container.innerHTML = '';
+    
+    if (!guides || guides.length === 0) {
+        return;
+    }
+    
+    // Get the parent container to position guides correctly
+    const content = document.getElementById('editorContent');
+    if (!content) return;
+    
+    guides.forEach(guide => {
+        const line = document.createElement('div');
+        line.style.position = 'absolute';
+        line.style.background = '#00ff00';
+        line.style.opacity = '0.8';
+        line.style.zIndex = '1001';
+        line.style.pointerEvents = 'none';
+        line.style.boxShadow = '0 0 2px rgba(0, 255, 0, 0.8)';
+        
+        if (guide.type === 'horizontal') {
+            line.style.left = '0';
+            line.style.top = `${guide.pos}px`;
+            line.style.width = '100%';
+            line.style.height = '2px';
+            line.style.transform = 'translateY(-1px)';
+        } else {
+            line.style.left = `${guide.pos}px`;
+            line.style.top = '0';
+            line.style.width = '2px';
+            line.style.height = '100%';
+            line.style.transform = 'translateX(-1px)';
+        }
+        
+        container.appendChild(line);
+    });
+}
+
+// Hide alignment guides
+function hideAlignmentGuides() {
+    if (alignmentGuideContainer) {
+        alignmentGuideContainer.innerHTML = '';
+    }
+}
 
 function normalizeLegacyDatasetKeys(widget) {
     if (!widget || !widget.dataset) return;
@@ -89,13 +162,18 @@ function startDrag(widget, e) {
     // Get initial positions relative to parent
     const parentRect = originalParent.getBoundingClientRect();
     
-    // Calculate initial offset from parent's top-left
+    // Calculate initial widget position
     const startLeft = parseInt(widget.style.left) || 0;
     const startTop = parseInt(widget.style.top) || 0;
     
-    // Calculate initial mouse position relative to parent
+    // Calculate initial mouse position relative to parent (capture at drag start)
     const startMouseX = (e.clientX - parentRect.left) / zoomLevel;
     const startMouseY = (e.clientY - parentRect.top) / zoomLevel;
+    
+    // Calculate offset from mouse to widget top-left corner (for precise positioning)
+    const widgetRect = widget.getBoundingClientRect();
+    const offsetX = (widgetRect.left - e.clientX) / zoomLevel;
+    const offsetY = (widgetRect.top - e.clientY) / zoomLevel;
     
     // Track which container we're hovering over
     let hoveredContainer = null;
@@ -138,11 +216,11 @@ function startDrag(widget, e) {
         // Get current parent position (in case parent moved)
         const currentParentRect = originalParent.getBoundingClientRect();
         
-        // Calculate mouse position relative to original parent's padding box
+        // Calculate mouse position relative to parent (accounting for zoom)
         const currentMouseX = (e.clientX - currentParentRect.left) / zoomLevel;
         const currentMouseY = (e.clientY - currentParentRect.top) / zoomLevel;
         
-        // Calculate deltas
+        // Calculate deltas from initial mouse position (captured at drag start)
         const deltaX = currentMouseX - startMouseX;
         const deltaY = currentMouseY - startMouseY;
         
@@ -155,13 +233,123 @@ function startDrag(widget, e) {
             widget.classList.add('dragging');
         }
         
-        // Calculate new position (relative to padding box, which is what CSS left/top use)
-        let x = startLeft + deltaX;
-        let y = startTop + deltaY;
+        // Calculate new position directly from mouse (no offset - widget shows exactly where it will drop)
+        // The offsetX/Y accounts for where on the widget the user clicked, so it maintains that relative position
+        let x = currentMouseX + offsetX;
+        let y = currentMouseY + offsetY;
         
-        // Only constrain bounds if nested inside a container widget
-        if (isNested && originalParent.classList.contains('container')) {
-            // Get parent padding to calculate content area
+        // Smart alignment guides (Photoshop-style)
+        const SNAP_THRESHOLD = 5; // pixels
+        let snapX = null, snapY = null;
+        let guideLines = [];
+        
+        // Get all other widgets for alignment detection - ONLY widgets with the same parent
+        // This ensures alignment guides respect the widget hierarchy
+        const allWidgets = Array.from(originalParent.querySelectorAll('.widget'));
+        const otherWidgets = allWidgets.filter(w => {
+            return w !== widget && 
+                   !widget.contains(w) && 
+                   w.parentElement === originalParent &&
+                   w.offsetWidth > 0 && 
+                   w.offsetHeight > 0 && 
+                   w.style.display !== 'none'; // Only visible widgets
+        });
+        
+        // Debug: log if we have widgets to align with
+        if (otherWidgets.length === 0) {
+            // No siblings to align with, skip alignment detection
+        }
+        
+        // Get widget bounds
+        const widgetWidth = widget.offsetWidth;
+        const widgetHeight = widget.offsetHeight;
+        const widgetCenterX = x + widgetWidth / 2;
+        const widgetCenterY = y + widgetHeight / 2;
+        const widgetRight = x + widgetWidth;
+        const widgetBottom = y + widgetHeight;
+        
+        // Check alignment with other widgets
+        // Get the parent container for coordinate conversion
+        const parentContainer = originalParent;
+        const parentContainerRect = parentContainer.getBoundingClientRect();
+        
+        for (const otherWidget of otherWidgets) {
+            if (!otherWidget.parentElement) continue;
+            
+            // Get other widget's position relative to the same parent container
+            const otherRect = otherWidget.getBoundingClientRect();
+            const otherParent = otherWidget.parentElement;
+            
+            // Convert to same coordinate system (relative to originalParent)
+            let otherLeft, otherTop;
+            if (otherParent === parentContainer) {
+                // Same parent - direct conversion
+                otherLeft = (otherRect.left - parentContainerRect.left) / zoomLevel;
+                otherTop = (otherRect.top - parentContainerRect.top) / zoomLevel;
+            } else {
+                // Different parent - skip this widget (only align with siblings in same parent)
+                continue;
+            }
+            
+            const otherWidth = otherWidget.offsetWidth;
+            const otherHeight = otherWidget.offsetHeight;
+            const otherCenterX = otherLeft + otherWidth / 2;
+            const otherCenterY = otherTop + otherHeight / 2;
+            const otherRight = otherLeft + otherWidth;
+            const otherBottom = otherTop + otherHeight;
+            
+            // Check horizontal alignments (top, center, bottom)
+            const topDiff = Math.abs(y - otherTop);
+            const centerYDiff = Math.abs(widgetCenterY - otherCenterY);
+            const bottomDiff = Math.abs(widgetBottom - otherBottom);
+            
+            if (topDiff < SNAP_THRESHOLD) {
+                snapY = otherTop;
+                guideLines.push({ type: 'horizontal', pos: otherTop });
+            } else if (centerYDiff < SNAP_THRESHOLD) {
+                snapY = otherCenterY - widgetHeight / 2;
+                guideLines.push({ type: 'horizontal', pos: otherCenterY });
+            } else if (bottomDiff < SNAP_THRESHOLD) {
+                snapY = otherBottom - widgetHeight;
+                guideLines.push({ type: 'horizontal', pos: otherBottom });
+            }
+            
+            // Check vertical alignments (left, center, right)
+            const leftDiff = Math.abs(x - otherLeft);
+            const centerXDiff = Math.abs(widgetCenterX - otherCenterX);
+            const rightDiff = Math.abs(widgetRight - otherRight);
+            
+            if (leftDiff < SNAP_THRESHOLD) {
+                snapX = otherLeft;
+                guideLines.push({ type: 'vertical', pos: otherLeft });
+            } else if (centerXDiff < SNAP_THRESHOLD) {
+                snapX = otherCenterX - widgetWidth / 2;
+                guideLines.push({ type: 'vertical', pos: otherCenterX });
+            } else if (rightDiff < SNAP_THRESHOLD) {
+                snapX = otherRight - widgetWidth;
+                guideLines.push({ type: 'vertical', pos: otherRight });
+            }
+        }
+        
+        // Apply snap if close to alignment
+        if (snapX !== null) x = snapX;
+        if (snapY !== null) y = snapY;
+        
+        // Show guide lines
+        showAlignmentGuides(guideLines);
+        
+        // Constrain bounds to prevent widgets from going outside canvas/panels
+        if (originalParent.id === 'editorContent') {
+            // Root level widget - constrain to editorContent bounds (canvas)
+            const content = originalParent;
+            const contentWidth = content.offsetWidth;
+            const contentHeight = content.offsetHeight;
+            
+            // Ensure widget stays within canvas bounds (prevent hiding under panels)
+            x = Math.max(0, Math.min(x, Math.max(0, contentWidth - widget.offsetWidth)));
+            y = Math.max(0, Math.min(y, Math.max(0, contentHeight - widget.offsetHeight)));
+        } else if (isNested && originalParent.classList.contains('container')) {
+            // Nested widget - constrain to container bounds
             const parentStyle = window.getComputedStyle(originalParent);
             const parentPaddingLeft = parseInt(parentStyle.paddingLeft) || 0;
             const parentPaddingTop = parseInt(parentStyle.paddingTop) || 0;
@@ -194,6 +382,7 @@ function startDrag(widget, e) {
         document.removeEventListener('mouseup', up);
         
         widget.classList.remove('dragging');
+        hideAlignmentGuides();
         
         if (!isDragging) {
             hoverCleanup();
@@ -388,6 +577,7 @@ function startResize(widget, dir, e) {
 
 function setZoom(level) {
     zoomLevel = Math.max(0.5, Math.min(3, level));
+    window.zoomLevel = zoomLevel; // Update window reference
     document.getElementById('editorContent').style.transform = `scale(${zoomLevel})`;
     document.getElementById('zoomLevel').textContent = `${Math.round(zoomLevel * 100)}%`;
 }
@@ -709,45 +899,71 @@ function duplicateWidget(widget) {
 }
 
 function performArrowNudge(key, isInitialTick) {
-    if (!selectedWidget) return;
-    const parent = selectedWidget.parentElement;
-    if (!parent) return;
+    // Get all selected widgets (multi-selection support)
+    const multiSelectedWidgets = window.__multiSelectedWidgets;
+    if (!multiSelectedWidgets || multiSelectedWidgets.size === 0) {
+        if (!selectedWidget) return;
+        // Fallback to single selection
+        const widgetsToMove = [selectedWidget];
+        moveWidgetsWithArrow(widgetsToMove, key, isInitialTick);
+        return;
+    }
+    
+    // Move all selected widgets
+    const widgetsToMove = Array.from(multiSelectedWidgets);
+    moveWidgetsWithArrow(widgetsToMove, key, isInitialTick);
+}
+
+function moveWidgetsWithArrow(widgets, key, isInitialTick) {
+    if (!widgets || widgets.length === 0) return;
     
     const elapsed = Math.max(0, performance.now() - arrowNudgeStartTime);
     const multiplier = Math.pow(2, Math.floor(elapsed / 2000));
     const step = isInitialTick ? 1 : Math.min(32, Math.max(1, multiplier));
     
-    let left = parseInt(selectedWidget.style.left) || 0;
-    let top = parseInt(selectedWidget.style.top) || 0;
+    let deltaX = 0;
+    let deltaY = 0;
     
     switch (key) {
         case 'ArrowUp':
-            top -= step;
+            deltaY = -step;
             break;
         case 'ArrowDown':
-            top += step;
+            deltaY = step;
             break;
         case 'ArrowLeft':
-            left -= step;
+            deltaX = -step;
             break;
         case 'ArrowRight':
-            left += step;
+            deltaX = step;
             break;
         default:
             return;
     }
     
-    const clamped = clampPositionToParent(selectedWidget, left, top);
-    selectedWidget.style.left = `${clamped.left}px`;
-    selectedWidget.style.top = `${clamped.top}px`;
-    
-    if (selectedWidget.dataset._originalAnchors !== undefined) {
-        delete selectedWidget.dataset._originalAnchors;
-        delete selectedWidget.dataset._originalMargins;
-    }
-    if (selectedWidget.dataset._originalPropertyList !== undefined) {
-        delete selectedWidget.dataset._originalPropertyList;
-    }
+    // Move all selected widgets by the same amount
+    widgets.forEach(widget => {
+        if (!widget || !widget.parentElement) return;
+        
+        let left = parseInt(widget.style.left) || 0;
+        let top = parseInt(widget.style.top) || 0;
+        
+        left += deltaX;
+        top += deltaY;
+        
+        const clamped = clampPositionToParent(widget, left, top);
+        widget.style.left = `${clamped.left}px`;
+        widget.style.top = `${clamped.top}px`;
+        
+        // Clear original anchors/margins for all moved widgets
+        if (widget.dataset._originalAnchors !== undefined) {
+            delete widget.dataset._originalAnchors;
+            delete widget.dataset._originalMargins;
+        }
+        if (widget.dataset._originalPropertyList !== undefined) {
+            delete widget.dataset._originalPropertyList;
+        }
+    });
     
     arrowNudgeMoved = true;
 }
@@ -847,10 +1063,18 @@ document.addEventListener('keydown', e => {
     
     e.preventDefault();
     
+    // Check if we have any selected widgets (single or multi-selection)
+    const multiSelectedWidgets = window.__multiSelectedWidgets;
+    const hasSelection = (multiSelectedWidgets && multiSelectedWidgets.size > 0) || selectedWidget;
+    
     if (!arrowNudgeInterval) {
         arrowNudgeStartTime = performance.now();
         arrowNudgeInterval = setInterval(() => {
-            if (!arrowNudgeKey || !selectedWidget) {
+            // Re-check selection on each interval tick
+            const currentMultiSelected = window.__multiSelectedWidgets;
+            const currentHasSelection = (currentMultiSelected && currentMultiSelected.size > 0) || selectedWidget;
+            
+            if (!arrowNudgeKey || !currentHasSelection) {
                 stopArrowNudge(true);
                 return;
             }

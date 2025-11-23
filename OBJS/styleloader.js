@@ -905,13 +905,16 @@ function applyOTUIStyleToWidget(widget, widgetType) {
     // Check for image-clip and image-rect (even without image-source) to enforce size
     // BUT: Only use for sizing if width/height are NOT explicitly set
     // This applies to ALL widgets with image-clip/image-rect, regardless of whether image is loaded
+    // Priority: dataset (user-set) > state-specific > base style
     // IMPORTANT: Check state-specific style FIRST, then base style
     // Checkboxes may have different clips for $checked vs $unchecked states
     // We need to check states BEFORE merging because state image-clip/image-rect should take precedence
     // image-rect works the same as image-clip: x y width height
     // NOTE: icon-rect is NOT the same - it's for icon positioning, NOT widget sizing
-    let imageClip = null;
-    let imageRect = null;
+    
+    // Check dataset first (user-set properties from property editor)
+    let imageClip = getDatasetValue(widget, 'image-clip');
+    let imageRect = getDatasetValue(widget, 'image-rect');
     
     // Check state-specific image-clip/image-rect FIRST (before merging) - safe access
     if (fullStyle && fullStyle.states && typeof fullStyle.states === 'object') {
@@ -936,9 +939,10 @@ function applyOTUIStyleToWidget(widget, widgetType) {
         }
     }
     
-    // If no state clip/rect found, check merged style (base style)
+    // If no dataset or state clip/rect found, check merged style (base style)
     // CRITICAL: Do NOT use icon-rect for sizing - it's only for icon positioning
     // icon-rect and image-rect are DIFFERENT properties - icon-rect is for icon positioning only
+    // Only use style values if not already set from dataset or state
     if (!imageClip) {
         imageClip = style['image-clip'];
         // Explicitly exclude icon-rect - it's NOT the same as image-clip
@@ -1069,10 +1073,35 @@ function applyOTUIStyleToWidget(widget, widgetType) {
         if (imageUrl) {
             // Use the hasClip variable we already calculated above
             // Handle image borders (9-slice scaling)
-            const borderTop = parseInt(style['image-border-top'] || style['image-border'] || '0', 10);
-            const borderBottom = parseInt(style['image-border-bottom'] || style['image-border'] || '0', 10);
-            const borderLeft = parseInt(style['image-border-left'] || style['image-border'] || '0', 10);
-            const borderRight = parseInt(style['image-border-right'] || style['image-border'] || '0', 10);
+            // Check dataset first (user-set properties), then fall back to style
+            const borderTop = parseInt(
+                getDatasetValue(widget, 'image-border-top') || 
+                getDatasetValue(widget, 'image-border') || 
+                style['image-border-top'] || 
+                style['image-border'] || 
+                '0', 10
+            );
+            const borderBottom = parseInt(
+                getDatasetValue(widget, 'image-border-bottom') || 
+                getDatasetValue(widget, 'image-border') || 
+                style['image-border-bottom'] || 
+                style['image-border'] || 
+                '0', 10
+            );
+            const borderLeft = parseInt(
+                getDatasetValue(widget, 'image-border-left') || 
+                getDatasetValue(widget, 'image-border') || 
+                style['image-border-left'] || 
+                style['image-border'] || 
+                '0', 10
+            );
+            const borderRight = parseInt(
+                getDatasetValue(widget, 'image-border-right') || 
+                getDatasetValue(widget, 'image-border') || 
+                style['image-border-right'] || 
+                style['image-border'] || 
+                '0', 10
+            );
             const hasBorder = borderTop || borderBottom || borderLeft || borderRight;
             
             // Priority: image-clip takes precedence over border-image for sprite sheets
