@@ -31,7 +31,7 @@ function createAlignmentGuideContainer() {
 }
 
 // Show alignment guides (Photoshop-style)
-function showAlignmentGuides(guides) {
+function showAlignmentGuides(guides, parentElement = null) {
     const container = createAlignmentGuideContainer();
     if (!container) {
         console.warn('Alignment guide container not found');
@@ -45,9 +45,19 @@ function showAlignmentGuides(guides) {
         return;
     }
     
-    // Get the parent container to position guides correctly
+    // Get the editorContent for absolute positioning
     const content = document.getElementById('editorContent');
     if (!content) return;
+    
+    // Calculate parent offset if widget is nested
+    let parentOffsetX = 0;
+    let parentOffsetY = 0;
+    if (parentElement && parentElement !== content) {
+        const parentRect = parentElement.getBoundingClientRect();
+        const contentRect = content.getBoundingClientRect();
+        parentOffsetX = parentRect.left - contentRect.left;
+        parentOffsetY = parentRect.top - contentRect.top;
+    }
     
     guides.forEach(guide => {
         const line = document.createElement('div');
@@ -60,12 +70,12 @@ function showAlignmentGuides(guides) {
         
         if (guide.type === 'horizontal') {
             line.style.left = '0';
-            line.style.top = `${guide.pos}px`;
+            line.style.top = `${guide.pos + parentOffsetY}px`;
             line.style.width = '100%';
             line.style.height = '2px';
             line.style.transform = 'translateY(-1px)';
         } else {
-            line.style.left = `${guide.pos}px`;
+            line.style.left = `${guide.pos + parentOffsetX}px`;
             line.style.top = '0';
             line.style.width = '2px';
             line.style.height = '100%';
@@ -240,8 +250,10 @@ function startDrag(widget, e) {
         
         // Smart alignment guides (Photoshop-style)
         const SNAP_THRESHOLD = 5; // pixels
+        const GUIDE_THRESHOLD = 10; // Show guides when within this distance (larger than snap for visual feedback)
         let snapX = null, snapY = null;
         let guideLines = [];
+        const usedPositions = { horizontal: new Set(), vertical: new Set() }; // Track to avoid duplicates
         
         // Get all other widgets for alignment detection - ONLY widgets with the same parent
         // This ensures alignment guides respect the widget hierarchy
@@ -254,11 +266,6 @@ function startDrag(widget, e) {
                    w.offsetHeight > 0 && 
                    w.style.display !== 'none'; // Only visible widgets
         });
-        
-        // Debug: log if we have widgets to align with
-        if (otherWidgets.length === 0) {
-            // No siblings to align with, skip alignment detection
-        }
         
         // Get widget bounds
         const widgetWidth = widget.offsetWidth;
@@ -303,15 +310,42 @@ function startDrag(widget, e) {
             const centerYDiff = Math.abs(widgetCenterY - otherCenterY);
             const bottomDiff = Math.abs(widgetBottom - otherBottom);
             
+            // Only add guide if within threshold and not already added
             if (topDiff < SNAP_THRESHOLD) {
                 snapY = otherTop;
-                guideLines.push({ type: 'horizontal', pos: otherTop });
+                const pos = otherTop;
+                if (!usedPositions.horizontal.has(pos)) {
+                    guideLines.push({ type: 'horizontal', pos: pos });
+                    usedPositions.horizontal.add(pos);
+                }
             } else if (centerYDiff < SNAP_THRESHOLD) {
                 snapY = otherCenterY - widgetHeight / 2;
-                guideLines.push({ type: 'horizontal', pos: otherCenterY });
+                const pos = otherCenterY;
+                if (!usedPositions.horizontal.has(pos)) {
+                    guideLines.push({ type: 'horizontal', pos: pos });
+                    usedPositions.horizontal.add(pos);
+                }
             } else if (bottomDiff < SNAP_THRESHOLD) {
                 snapY = otherBottom - widgetHeight;
-                guideLines.push({ type: 'horizontal', pos: otherBottom });
+                const pos = otherBottom;
+                if (!usedPositions.horizontal.has(pos)) {
+                    guideLines.push({ type: 'horizontal', pos: pos });
+                    usedPositions.horizontal.add(pos);
+                }
+            } else if (topDiff < GUIDE_THRESHOLD || centerYDiff < GUIDE_THRESHOLD || bottomDiff < GUIDE_THRESHOLD) {
+                // Show guide when close but not snapping (for visual feedback)
+                let pos;
+                if (topDiff < GUIDE_THRESHOLD) {
+                    pos = otherTop;
+                } else if (centerYDiff < GUIDE_THRESHOLD) {
+                    pos = otherCenterY;
+                } else {
+                    pos = otherBottom;
+                }
+                if (!usedPositions.horizontal.has(pos)) {
+                    guideLines.push({ type: 'horizontal', pos: pos });
+                    usedPositions.horizontal.add(pos);
+                }
             }
             
             // Check vertical alignments (left, center, right)
@@ -321,13 +355,39 @@ function startDrag(widget, e) {
             
             if (leftDiff < SNAP_THRESHOLD) {
                 snapX = otherLeft;
-                guideLines.push({ type: 'vertical', pos: otherLeft });
+                const pos = otherLeft;
+                if (!usedPositions.vertical.has(pos)) {
+                    guideLines.push({ type: 'vertical', pos: pos });
+                    usedPositions.vertical.add(pos);
+                }
             } else if (centerXDiff < SNAP_THRESHOLD) {
                 snapX = otherCenterX - widgetWidth / 2;
-                guideLines.push({ type: 'vertical', pos: otherCenterX });
+                const pos = otherCenterX;
+                if (!usedPositions.vertical.has(pos)) {
+                    guideLines.push({ type: 'vertical', pos: pos });
+                    usedPositions.vertical.add(pos);
+                }
             } else if (rightDiff < SNAP_THRESHOLD) {
                 snapX = otherRight - widgetWidth;
-                guideLines.push({ type: 'vertical', pos: otherRight });
+                const pos = otherRight;
+                if (!usedPositions.vertical.has(pos)) {
+                    guideLines.push({ type: 'vertical', pos: pos });
+                    usedPositions.vertical.add(pos);
+                }
+            } else if (leftDiff < GUIDE_THRESHOLD || centerXDiff < GUIDE_THRESHOLD || rightDiff < GUIDE_THRESHOLD) {
+                // Show guide when close but not snapping (for visual feedback)
+                let pos;
+                if (leftDiff < GUIDE_THRESHOLD) {
+                    pos = otherLeft;
+                } else if (centerXDiff < GUIDE_THRESHOLD) {
+                    pos = otherCenterX;
+                } else {
+                    pos = otherRight;
+                }
+                if (!usedPositions.vertical.has(pos)) {
+                    guideLines.push({ type: 'vertical', pos: pos });
+                    usedPositions.vertical.add(pos);
+                }
             }
         }
         
@@ -335,25 +395,77 @@ function startDrag(widget, e) {
         if (snapX !== null) x = snapX;
         if (snapY !== null) y = snapY;
         
-        // Always show alignment lines for the widget being dragged, even if it's the only widget
-        // This helps with positioning by showing the widget's edges and center
-        // Recalculate bounds after snapping to show final position
+        // Recalculate bounds after snapping
         const finalWidgetCenterX = x + widgetWidth / 2;
         const finalWidgetCenterY = y + widgetHeight / 2;
         const finalWidgetRight = x + widgetWidth;
         const finalWidgetBottom = y + widgetHeight;
         
-        guideLines.push(
-            { type: 'horizontal', pos: y }, // Top edge
-            { type: 'horizontal', pos: finalWidgetCenterY }, // Center Y
-            { type: 'horizontal', pos: finalWidgetBottom }, // Bottom edge
-            { type: 'vertical', pos: x }, // Left edge
-            { type: 'vertical', pos: finalWidgetCenterX }, // Center X
-            { type: 'vertical', pos: finalWidgetRight } // Right edge
-        );
+        // Only show widget's own alignment lines if there are other widgets to align with
+        // and only show lines that are actually aligning or close to alignment
+        if (otherWidgets.length > 0) {
+            // Check if widget edges/center align with any other widget
+            const checkAlignment = (pos, type) => {
+                for (const otherWidget of otherWidgets) {
+                    const otherRect = otherWidget.getBoundingClientRect();
+                    const otherParent = otherWidget.parentElement;
+                    if (otherParent !== parentContainer) continue;
+                    
+                    const otherLeft = (otherRect.left - parentContainerRect.left) / zoomLevel;
+                    const otherTop = (otherRect.top - parentContainerRect.top) / zoomLevel;
+                    const otherWidth = otherWidget.offsetWidth;
+                    const otherHeight = otherWidget.offsetHeight;
+                    
+                    if (type === 'horizontal') {
+                        const otherCenterY = otherTop + otherHeight / 2;
+                        const otherBottom = otherTop + otherHeight;
+                        if (Math.abs(pos - otherTop) < GUIDE_THRESHOLD || 
+                            Math.abs(pos - otherCenterY) < GUIDE_THRESHOLD || 
+                            Math.abs(pos - otherBottom) < GUIDE_THRESHOLD) {
+                            return true;
+                        }
+                    } else {
+                        const otherCenterX = otherLeft + otherWidth / 2;
+                        const otherRight = otherLeft + otherWidth;
+                        if (Math.abs(pos - otherLeft) < GUIDE_THRESHOLD || 
+                            Math.abs(pos - otherCenterX) < GUIDE_THRESHOLD || 
+                            Math.abs(pos - otherRight) < GUIDE_THRESHOLD) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            };
+            
+            // Only add widget's own lines if they align with something
+            if (checkAlignment(y, 'horizontal') && !usedPositions.horizontal.has(y)) {
+                guideLines.push({ type: 'horizontal', pos: y });
+                usedPositions.horizontal.add(y);
+            }
+            if (checkAlignment(finalWidgetCenterY, 'horizontal') && !usedPositions.horizontal.has(finalWidgetCenterY)) {
+                guideLines.push({ type: 'horizontal', pos: finalWidgetCenterY });
+                usedPositions.horizontal.add(finalWidgetCenterY);
+            }
+            if (checkAlignment(finalWidgetBottom, 'horizontal') && !usedPositions.horizontal.has(finalWidgetBottom)) {
+                guideLines.push({ type: 'horizontal', pos: finalWidgetBottom });
+                usedPositions.horizontal.add(finalWidgetBottom);
+            }
+            if (checkAlignment(x, 'vertical') && !usedPositions.vertical.has(x)) {
+                guideLines.push({ type: 'vertical', pos: x });
+                usedPositions.vertical.add(x);
+            }
+            if (checkAlignment(finalWidgetCenterX, 'vertical') && !usedPositions.vertical.has(finalWidgetCenterX)) {
+                guideLines.push({ type: 'vertical', pos: finalWidgetCenterX });
+                usedPositions.vertical.add(finalWidgetCenterX);
+            }
+            if (checkAlignment(finalWidgetRight, 'vertical') && !usedPositions.vertical.has(finalWidgetRight)) {
+                guideLines.push({ type: 'vertical', pos: finalWidgetRight });
+                usedPositions.vertical.add(finalWidgetRight);
+            }
+        }
         
-        // Show guide lines
-        showAlignmentGuides(guideLines);
+        // Show guide lines with parent offset
+        showAlignmentGuides(guideLines, originalParent);
         
         // Constrain bounds to prevent widgets from going outside canvas/panels
         if (originalParent.id === 'editorContent') {

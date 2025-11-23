@@ -1,0 +1,15 @@
+{
+  "name": "otui-builder",
+  "version": "1.0.0",
+  "description": "OTUI Builder - Visual Editor for OTClient UI",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "cd server && node server.js",
+    "dev": "cd server && node server.js",
+    "install-deps": "cd server && npm install"
+  },
+  "keywords": ["otui", "otclient", "editor"],
+  "author": "",
+  "license": "ISC"
+}
+

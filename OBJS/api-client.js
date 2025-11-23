@@ -1,17 +1,41 @@
 // API Client - Wraps server-side API calls
 // SECURE: No local fallback - API server required
 
-const API_BASE_URL = 'http://95.217.237.27:3000/api';
+// API_BASE_URL is set in HTML, fallback to auto-detect
+const API_BASE_URL = (typeof window !== 'undefined' && window.API_BASE_URL) 
+    ? window.API_BASE_URL 
+    : (typeof window !== 'undefined' ? window.location.origin + '/api' : 'http://localhost:3000/api');
 
 // Always try to use the API - let actual calls fail if server is unavailable
 // This ensures we don't block on health checks that might fail due to CORS or missing endpoints
 let useServerAPI = true; // Default to true - always try API first
 let apiAvailable = true; // Default to true - we'll discover if it's not available on first call
 
+// Get auth headers for API requests
+function getAuthHeaders() {
+    const headers = { 'Content-Type': 'application/json' };
+    if (window.AuthClient && window.AuthClient.token) {
+        headers['Authorization'] = `Bearer ${window.AuthClient.token}`;
+    }
+    return headers;
+}
+
+// Get API base URL dynamically
+function getApiBaseUrl() {
+    if (typeof window !== 'undefined' && window.API_BASE_URL) {
+        return window.API_BASE_URL;
+    }
+    if (typeof window !== 'undefined') {
+        return window.location.origin + '/api';
+    }
+    return 'http://localhost:3000/api';
+}
+
 // Check if API is available (optional - doesn't block usage)
 async function checkAPIAvailability() {
     try {
-        const response = await fetch(`${API_BASE_URL}/health`, {
+        const apiUrl = getApiBaseUrl();
+        const response = await fetch(`${apiUrl}/health`, {
             method: 'GET',
             signal: AbortSignal.timeout(2000)
         });
@@ -39,9 +63,10 @@ async function parseOTUICodeAPI(code) {
     // Always try the API - don't block on health check status
     try {
         const widgetDefinitions = typeof OTUI_WIDGETS !== 'undefined' ? OTUI_WIDGETS : {};
-        const response = await fetch(`${API_BASE_URL}/parse`, {
+        const response = await fetch(`${getApiBaseUrl()}/parse`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders(),
+            credentials: 'include', // Include cookies
             body: JSON.stringify({ code, widgetDefinitions })
         });
         
@@ -115,9 +140,10 @@ async function generateOTUICodeAPI() {
             });
         }
         
-        const response = await fetch(`${API_BASE_URL}/generate`, {
+        const response = await fetch(`${getApiBaseUrl()}/generate`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders(),
+            credentials: 'include', // Include cookies
             body: JSON.stringify({ widgetTree, widgetDefinitions, importedTemplates, userTemplates })
         });
         
@@ -283,9 +309,10 @@ function serializeWidgetForAPI(widget) {
 async function parseOTUIFileAPI(content) {
     // Always try the API - don't block on health check status
     try {
-        const response = await fetch(`${API_BASE_URL}/styles/parse`, {
+        const response = await fetch(`${getApiBaseUrl()}/styles/parse`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders(),
+            credentials: 'include', // Include cookies
             body: JSON.stringify({ content })
         });
         
@@ -318,8 +345,14 @@ async function loadOTUIFilesFromFilesAPI(files) {
             formData.append('files', file);
         });
         
-        const response = await fetch(`${API_BASE_URL}/styles/load`, {
+        const headers = {};
+        if (window.AuthClient && window.AuthClient.token) {
+            headers['Authorization'] = `Bearer ${window.AuthClient.token}`;
+        }
+        const response = await fetch(`${getApiBaseUrl()}/styles/load`, {
             method: 'POST',
+            headers: headers,
+            credentials: 'include', // Include cookies
             body: formData
         });
         
@@ -359,8 +392,14 @@ async function processImagesAPI(files) {
             formData.append('images', file);
         });
         
-        const response = await fetch(`${API_BASE_URL}/images/process`, {
+        const headers = {};
+        if (window.AuthClient && window.AuthClient.token) {
+            headers['Authorization'] = `Bearer ${window.AuthClient.token}`;
+        }
+        const response = await fetch(`${getApiBaseUrl()}/images/process`, {
             method: 'POST',
+            headers: headers,
+            credentials: 'include', // Include cookies
             body: formData
         });
         
@@ -390,9 +429,10 @@ async function generateOTUIModuleAPI(prompt, context = '') {
         const model = localStorage.getItem('ai_model') || 'gpt-4o-mini';
         const endpoint = localStorage.getItem('ai_endpoint') || '';
         
-        const response = await fetch(`${API_BASE_URL}/ai/generate`, {
+        const response = await fetch(`${getApiBaseUrl()}/ai/generate`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: getAuthHeaders(),
+            credentials: 'include', // Include cookies
             body: JSON.stringify({ prompt, context, apiKey, provider, model, endpoint })
         });
         
@@ -425,6 +465,7 @@ if (typeof window !== 'undefined') {
         generateOTUIModule: generateOTUIModuleAPI,
         useServerAPI: () => useServerAPI,
         setUseServerAPI: (value) => { useServerAPI = value && apiAvailable; },
-        API_BASE_URL: API_BASE_URL // Expose for error messages
+        API_BASE_URL: getApiBaseUrl(), // Expose for error messages
+        getApiBaseUrl: getApiBaseUrl // Expose function
     };
 }

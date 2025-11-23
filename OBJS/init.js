@@ -21,6 +21,33 @@ function updateAll() {
 
     updatePreview();
     if (typeof updateHierarchyTree === 'function') updateHierarchyTree();
+    
+    // Update editor content size to ensure scrolling works
+    updateEditorContentSize();
+}
+
+function updateEditorContentSize() {
+    const editorContent = document.getElementById('editorContent');
+    if (!editorContent) return;
+    
+    const widgets = editorContent.querySelectorAll('.widget');
+    let maxRight = 800; // Default min-width
+    let maxBottom = 600; // Default min-height
+    const padding = 100; // Extra padding
+    
+    widgets.forEach(widget => {
+        const left = parseInt(widget.style.left) || 0;
+        const top = parseInt(widget.style.top) || 0;
+        const width = widget.offsetWidth || 0;
+        const height = widget.offsetHeight || 0;
+        
+        maxRight = Math.max(maxRight, left + width + padding);
+        maxBottom = Math.max(maxBottom, top + height + padding);
+    });
+    
+    // Set explicit dimensions to ensure scrolling works
+    editorContent.style.width = `${maxRight}px`;
+    editorContent.style.height = `${maxBottom}px`;
 }
 
 function notifyAssetsMissing(action, missing) {
@@ -150,7 +177,377 @@ function bind(id, handler) {
     if (el) el.onclick = handler;
 }
 
+// Authentication UI Handler
+function initAuthUI() {
+    const authModal = document.getElementById('authModal');
+    const mainApp = document.getElementById('mainApp');
+    const loginForm = document.getElementById('authLoginForm');
+    const registerForm = document.getElementById('authRegisterForm');
+    const authError = document.getElementById('authError');
+    
+    if (!authModal || !mainApp) return;
+    
+    // Check if user is already authenticated
+    if (window.AuthClient && window.AuthClient.isAuthenticated()) {
+        // Verify token is still valid
+        window.AuthClient.verifyToken().then(valid => {
+            if (valid) {
+                showMainApp();
+            } else {
+                showAuthModal();
+            }
+        });
+    } else {
+        showAuthModal();
+    }
+    
+    function showAuthModal() {
+        authModal.style.display = 'block';
+        mainApp.style.display = 'none';
+    }
+    
+    function showMainApp() {
+        authModal.style.display = 'none';
+        mainApp.style.display = 'block';
+        updateUIForUserRole();
+    }
+    
+    function showError(message) {
+        authError.textContent = message;
+        authError.style.display = 'block';
+        setTimeout(() => {
+            authError.style.display = 'none';
+        }, 5000);
+    }
+    
+    // Login
+    const loginBtn = document.getElementById('loginBtn');
+    if (loginBtn) {
+        loginBtn.addEventListener('click', async () => {
+            const email = document.getElementById('loginEmail')?.value;
+            const password = document.getElementById('loginPassword')?.value;
+            
+            if (!email || !password) {
+                showError('Please enter email and password');
+                return;
+            }
+            
+            try {
+                await window.AuthClient.login(email, password);
+                showMainApp();
+                if (typeof showToast === 'function') {
+                    showToast('Login successful!');
+                }
+            } catch (error) {
+                showError(error.message || 'Login failed');
+            }
+        });
+    }
+    
+    // Register
+    const registerBtn = document.getElementById('registerBtn');
+    if (registerBtn) {
+        registerBtn.addEventListener('click', async () => {
+            const email = document.getElementById('registerEmail')?.value;
+            const password = document.getElementById('registerPassword')?.value;
+            const passwordConfirm = document.getElementById('registerPasswordConfirm')?.value;
+            
+            if (!email || !password) {
+                showError('Please enter email and password');
+                return;
+            }
+            
+            if (password.length < 6) {
+                showError('Password must be at least 6 characters');
+                return;
+            }
+            
+            if (password !== passwordConfirm) {
+                showError('Passwords do not match');
+                return;
+            }
+            
+            try {
+                await window.AuthClient.register(email, password);
+                showMainApp();
+                if (typeof showToast === 'function') {
+                    showToast('Account created! You are on a demo account. Contact admin for full access.');
+                }
+            } catch (error) {
+                showError(error.message || 'Registration failed');
+            }
+        });
+    }
+    
+    // Show register form
+    const showRegisterBtn = document.getElementById('showRegisterBtn');
+    if (showRegisterBtn) {
+        showRegisterBtn.addEventListener('click', () => {
+            loginForm.style.display = 'none';
+            registerForm.style.display = 'block';
+        });
+    }
+    
+    // Show login form
+    const showLoginBtn = document.getElementById('showLoginBtn');
+    if (showLoginBtn) {
+        showLoginBtn.addEventListener('click', () => {
+            registerForm.style.display = 'none';
+            loginForm.style.display = 'block';
+        });
+    }
+    
+    // Logout
+    const logoutBtn = document.getElementById('logoutBtn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            await window.AuthClient.logout();
+            showAuthModal();
+            if (typeof showToast === 'function') {
+                showToast('Logged out');
+            }
+        });
+    }
+    
+    // Enter key support
+    ['loginEmail', 'loginPassword', 'registerEmail', 'registerPassword', 'registerPasswordConfirm'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    if (id.startsWith('login')) {
+                        loginBtn?.click();
+                    } else if (id.startsWith('register')) {
+                        registerBtn?.click();
+                    }
+                }
+            });
+        }
+    });
+}
+
+// Update UI based on user role
+function updateUIForUserRole() {
+    if (!window.AuthClient || !window.AuthClient.user) return;
+    
+    const user = window.AuthClient.user;
+    const userInfo = document.getElementById('userInfo');
+    const adminBtn = document.getElementById('adminPanelBtn');
+    const buyFullAccessBtn = document.getElementById('buyFullAccessBtn');
+    const exportBtn = document.getElementById('exportBtn');
+    const aiGenerateBtn = document.getElementById('aiGenerateBtn');
+    const aiGenerateBtnSidebar = document.getElementById('aiGenerateBtnSidebar');
+    const viewCodeBtn = document.getElementById('viewCodeBtn');
+    const demoRestriction = document.getElementById('demoRestriction');
+    const importOTUIFileLabel = document.getElementById('importOTUIFileLabel');
+    
+    // Update user info
+    if (userInfo) {
+        userInfo.textContent = `${user.email} (${user.role === 'demo' ? 'Demo' : user.role === 'full_access' ? 'Full Access' : 'Admin'})`;
+    }
+    
+    // Show/hide admin button
+    if (adminBtn) {
+        adminBtn.style.display = user.role === 'admin' ? 'block' : 'none';
+    }
+    
+    // Show/hide buy full access button (only for demo users)
+    if (buyFullAccessBtn) {
+        buyFullAccessBtn.style.display = user.role === 'demo' ? 'block' : 'none';
+    }
+    
+    // Show/hide features based on access level
+    const hasFullAccess = window.AuthClient.hasFullAccess();
+    
+    if (exportBtn) {
+        exportBtn.style.display = hasFullAccess ? 'block' : 'none';
+    }
+    
+    if (aiGenerateBtn) {
+        aiGenerateBtn.style.display = hasFullAccess ? 'block' : 'none';
+    }
+    
+    if (aiGenerateBtnSidebar) {
+        aiGenerateBtnSidebar.style.display = hasFullAccess ? 'block' : 'none';
+    }
+    
+    if (viewCodeBtn) {
+        viewCodeBtn.style.display = hasFullAccess ? 'block' : 'none';
+    }
+    
+    if (importOTUIFileLabel) {
+        importOTUIFileLabel.style.display = hasFullAccess ? 'block' : 'none';
+    }
+    
+    if (demoRestriction) {
+        demoRestriction.style.display = hasFullAccess ? 'none' : 'block';
+    }
+}
+
+// Admin Panel Functions
+function initAdminPanel() {
+    const adminPanelBtn = document.getElementById('adminPanelBtn');
+    const adminPanelModal = document.getElementById('adminPanelModal');
+    
+    if (!adminPanelBtn || !adminPanelModal) return;
+    
+    adminPanelBtn.addEventListener('click', () => {
+        adminPanelModal.style.display = 'flex';
+        loadAdminStatistics();
+        loadAdminUsers();
+        loadAdminActivity();
+    });
+    
+    // Close modal
+    const closeBtn = adminPanelModal.querySelector('.modal-close');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            adminPanelModal.style.display = 'none';
+        });
+    }
+}
+
+async function loadAdminStatistics() {
+    if (!window.AuthClient || !window.AuthClient.isAdmin()) return;
+    
+    try {
+        const apiUrl = window.AuthClient.apiBaseUrl;
+        const response = await fetch(`${apiUrl}/admin/statistics`, {
+            headers: window.AuthClient.getAuthHeader(),
+            credentials: 'include' // Include cookies
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            document.getElementById('statTotalUsers').textContent = data.data.totalUsers || 0;
+            document.getElementById('statActiveUsers').textContent = data.data.activeUsers || 0;
+            document.getElementById('statTodayVisitors').textContent = data.data.todayVisitors || 0;
+            document.getElementById('statFullAccess').textContent = data.data.roleCounts?.full_access || 0;
+        }
+    } catch (error) {
+        console.error('Failed to load statistics:', error);
+    }
+}
+
+async function loadAdminUsers() {
+    if (!window.AuthClient || !window.AuthClient.isAdmin()) return;
+    
+    try {
+        const apiUrl = window.AuthClient.apiBaseUrl;
+        const response = await fetch(`${apiUrl}/admin/users`, {
+            headers: window.AuthClient.getAuthHeader(),
+            credentials: 'include' // Include cookies
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            const tbody = document.getElementById('adminUsersList');
+            if (!tbody) return;
+            
+            if (data.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" style="padding: 20px; text-align: center; color: var(--text-secondary);">No users found</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = data.data.map(user => {
+                const roleSelect = `
+                    <select onchange="updateUserRole('${user.id}', this.value)" style="padding: 4px 8px; background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border-primary); border-radius: 4px;">
+                        <option value="demo" ${user.role === 'demo' ? 'selected' : ''}>Demo</option>
+                        <option value="full_access" ${user.role === 'full_access' ? 'selected' : ''}>Full Access</option>
+                        <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Admin</option>
+                    </select>
+                `;
+                
+                return `
+                    <tr style="border-bottom: 1px solid var(--border-primary);">
+                        <td style="padding: 12px;">${user.email}</td>
+                        <td style="padding: 12px;">${roleSelect}</td>
+                        <td style="padding: 12px; font-size: 0.85rem; color: var(--text-secondary);">${new Date(user.createdAt).toLocaleDateString()}</td>
+                        <td style="padding: 12px; font-size: 0.85rem; color: var(--text-secondary);">${user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}</td>
+                        <td style="padding: 12px;">
+                            <button onclick="updateUserRole('${user.id}', 'full_access')" class="btn btn-sm" style="padding: 4px 8px; font-size: 0.8rem;">Upgrade</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    } catch (error) {
+        console.error('Failed to load users:', error);
+    }
+}
+
+async function updateUserRole(userId, newRole) {
+    if (!window.AuthClient || !window.AuthClient.isAdmin()) return;
+    
+    try {
+        const apiUrl = window.AuthClient.apiBaseUrl;
+        const response = await fetch(`${apiUrl}/admin/users/${userId}/role`, {
+            method: 'POST',
+            headers: {
+                ...window.AuthClient.getAuthHeader(),
+                'Content-Type': 'application/json'
+            },
+            credentials: 'include', // Include cookies
+            body: JSON.stringify({ role: newRole })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            if (typeof showToast === 'function') {
+                showToast('User role updated');
+            }
+            loadAdminUsers();
+            loadAdminStatistics();
+        } else {
+            alert('Failed to update user role: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Failed to update user role:', error);
+        alert('Failed to update user role: ' + error.message);
+    }
+}
+
+window.updateUserRole = updateUserRole;
+
+async function loadAdminActivity() {
+    if (!window.AuthClient || !window.AuthClient.isAdmin()) return;
+    
+    try {
+        const apiUrl = window.AuthClient.apiBaseUrl;
+        const response = await fetch(`${apiUrl}/admin/activity?limit=50`, {
+            headers: window.AuthClient.getAuthHeader(),
+            credentials: 'include' // Include cookies
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            const container = document.getElementById('adminActivityLog');
+            if (!container) return;
+            
+            if (data.data.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: var(--text-secondary);">No activity</div>';
+                return;
+            }
+            
+            container.innerHTML = data.data.map(activity => {
+                const time = new Date(activity.timestamp).toLocaleString();
+                return `
+                    <div style="padding: 8px; margin-bottom: 8px; background: var(--bg-tertiary); border-radius: 4px; font-size: 0.85rem;">
+                        <strong>${activity.action}</strong> - ${time}
+                        ${activity.data.email ? `<br><span style="color: var(--text-secondary);">${activity.data.email}</span>` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+    } catch (error) {
+        console.error('Failed to load activity:', error);
+    }
+}
+
 window.initOTUIBuilder = function() {
+    // Initialize authentication first
+    initAuthUI();
+    initAdminPanel();
     // Code tab switching functionality
     function setupCodeTabs(container) {
         const tabs = container.querySelectorAll('.code-tab');
@@ -415,7 +812,17 @@ window.initOTUIBuilder = function() {
     bind('zoomOutBtn', () => setZoom((window.zoomLevel || 1) - 0.1));
     bind('zoomResetBtn', () => setZoom(1));
     bind('previewBtn', () => showPreview());
-    bind('viewCodeBtn', () => showCodeModal());
+    bind('viewCodeBtn', () => {
+        if (!window.AuthClient || !window.AuthClient.hasFullAccess()) {
+            if (typeof showToast === 'function') {
+                showToast('Full access required to view code. Contact admin to upgrade your account.');
+            } else {
+                alert('Full access required to view code. Contact admin to upgrade your account.');
+            }
+            return;
+        }
+        showCodeModal();
+    });
     bind('newBtn', () => {
         if (confirm('Clear all widgets and start fresh?')) {
             const content = document.getElementById('editorContent');
@@ -460,10 +867,26 @@ window.initOTUIBuilder = function() {
     
     // Use bind function
     bind('aiGenerateBtn', () => {
+        if (!window.AuthClient || !window.AuthClient.hasFullAccess()) {
+            if (typeof showToast === 'function') {
+                showToast('Full access required for AI generation. Contact admin to upgrade your account.');
+            } else {
+                alert('Full access required for AI generation. Contact admin to upgrade your account.');
+            }
+            return;
+        }
         console.log('AI Generate button clicked (header)');
         openAIModal();
     });
     bind('aiGenerateBtnSidebar', () => {
+        if (!window.AuthClient || !window.AuthClient.hasFullAccess()) {
+            if (typeof showToast === 'function') {
+                showToast('Full access required for AI generation. Contact admin to upgrade your account.');
+            } else {
+                alert('Full access required for AI generation. Contact admin to upgrade your account.');
+            }
+            return;
+        }
         console.log('AI Generate button clicked (sidebar)');
         openAIModal();
     });
@@ -545,6 +968,14 @@ window.initOTUIBuilder = function() {
         
         // AI Generate button in modal
         bind('aiGenerateBtnModal', async () => {
+            if (!window.AuthClient || !window.AuthClient.hasFullAccess()) {
+                if (typeof showToast === 'function') {
+                    showToast('Full access required for AI generation. Contact admin to upgrade your account.');
+                } else {
+                    alert('Full access required for AI generation. Contact admin to upgrade your account.');
+                }
+                return;
+            }
             const descriptionInput = document.getElementById('aiDescriptionInput');
             const progressDiv = document.getElementById('aiProgress');
             const codeDiv = document.getElementById('aiGeneratedCode');
@@ -738,6 +1169,14 @@ window.initOTUIBuilder = function() {
     } else {
         // AI Generator not loaded - show error when trying to generate
         bind('aiGenerateBtnModal', () => {
+            if (!window.AuthClient || !window.AuthClient.hasFullAccess()) {
+                if (typeof showToast === 'function') {
+                    showToast('Full access required for AI generation. Contact admin to upgrade your account.');
+                } else {
+                    alert('Full access required for AI generation. Contact admin to upgrade your account.');
+                }
+                return;
+            }
             showToast('AI Generator not loaded. Please refresh the page.');
             console.error('OTUIAIGenerator not found. Make sure OBJS/ai-generator.js is loaded.');
         });
@@ -1092,6 +1531,17 @@ window.initOTUIBuilder = function() {
     const importOTUIFileInput = document.getElementById('importOTUIFileInput');
     if (importOTUIFileInput) {
         importOTUIFileInput.addEventListener('change', async (e) => {
+            // Check for full access
+            if (!window.AuthClient || !window.AuthClient.hasFullAccess()) {
+                e.target.value = ''; // Reset file input
+                if (typeof showToast === 'function') {
+                    showToast('Full access required to import OTUI files. Contact admin to upgrade your account.');
+                } else {
+                    alert('Full access required to import OTUI files. Contact admin to upgrade your account.');
+                }
+                return;
+            }
+            
             const file = e.target.files[0];
             if (!file || !file.name.endsWith('.otui')) {
                 showToast('Please select a valid .otui file');
@@ -1246,6 +1696,46 @@ window.initOTUIBuilder = function() {
     showToast('OTUI Builder 0.1.1 Beta — READY! (Please Load Styles/Images UI from Settings to start)');
     console.log('OTUI Builder 0.1.1 Beta — READY!');
     console.log('Keyboard shortcuts: Ctrl+Z (undo), Ctrl+Y/Ctrl+Shift+Z (redo), Del/Backspace (delete), Ctrl+C (copy), Ctrl+V (paste), Ctrl+D (duplicate)');
+    
+    // Ensure layout heights stay within the viewport (header + footer offsets)
+    function updateAppBodyHeight() {
+        const appBody = document.querySelector('.app-body');
+        if (!appBody) return;
+        const header = document.querySelector('.app-header');
+        const footer = document.querySelector('.app-footer');
+        const headerHeight = header?.offsetHeight || 0;
+        const footerHeight = footer?.offsetHeight || 0;
+        const available = Math.max(0, window.innerHeight - headerHeight - footerHeight);
+        appBody.style.height = `${available}px`;
+    }
+    updateAppBodyHeight();
+    window.addEventListener('resize', updateAppBodyHeight);
+    
+    // Ensure sidebar scrolling works
+    const leftSidebarContent = document.querySelector('.sidebar-left .sidebar-content');
+    const rightSidebarContent = document.querySelector('.sidebar-right .sidebar-content');
+    [leftSidebarContent, rightSidebarContent].forEach((content, index) => {
+        if (content) {
+            const side = index === 0 ? 'Left' : 'Right';
+            // Force scroll to work
+            content.style.overflowY = 'auto';
+            content.style.minHeight = '0';
+            content.style.height = '0'; // Critical for flex scrolling
+            // Test if scrolling is needed after content loads
+            setTimeout(() => {
+                const scrollHeight = content.scrollHeight;
+                const clientHeight = content.clientHeight;
+                console.log(`Sidebar ${side} - scrollHeight: ${scrollHeight}, clientHeight: ${clientHeight}, canScroll: ${scrollHeight > clientHeight}`);
+                if (scrollHeight > clientHeight) {
+                    console.log(`✓ Sidebar ${side} is scrollable`);
+                } else {
+                    console.log(`⚠ Sidebar ${side} content fits, no scroll needed`);
+                }
+            }, 500);
+        } else {
+            console.warn(`Sidebar ${index === 0 ? 'Left' : 'Right'} content element not found!`);
+        }
+    });
     
     // Initialize right sidebar resize functionality
     const rightSidebar = document.getElementById('rightSidebar');
