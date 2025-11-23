@@ -335,6 +335,23 @@ function startDrag(widget, e) {
         if (snapX !== null) x = snapX;
         if (snapY !== null) y = snapY;
         
+        // Always show alignment lines for the widget being dragged, even if it's the only widget
+        // This helps with positioning by showing the widget's edges and center
+        // Recalculate bounds after snapping to show final position
+        const finalWidgetCenterX = x + widgetWidth / 2;
+        const finalWidgetCenterY = y + widgetHeight / 2;
+        const finalWidgetRight = x + widgetWidth;
+        const finalWidgetBottom = y + widgetHeight;
+        
+        guideLines.push(
+            { type: 'horizontal', pos: y }, // Top edge
+            { type: 'horizontal', pos: finalWidgetCenterY }, // Center Y
+            { type: 'horizontal', pos: finalWidgetBottom }, // Bottom edge
+            { type: 'vertical', pos: x }, // Left edge
+            { type: 'vertical', pos: finalWidgetCenterX }, // Center X
+            { type: 'vertical', pos: finalWidgetRight } // Right edge
+        );
+        
         // Show guide lines
         showAlignmentGuides(guideLines);
         
