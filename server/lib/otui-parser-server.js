@@ -1,5 +1,6 @@
-// Server-side OTUI Parser (no DOM dependencies)
-// Extracted from OBJS/otui-parser.js - pure parsing logic only
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 
 function translateAnchorEdge(anchorEdge) {
     const normalized = anchorEdge.toLowerCase().replace(/\s+/g, '');

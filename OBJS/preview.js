@@ -1,4 +1,6 @@
-// OBJS/preview.js - Preview functionality and OTCv8 styling
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 function updatePreview() {
     const win = document.getElementById('previewWindow');
     if (!win) return;

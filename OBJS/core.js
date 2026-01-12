@@ -1,4 +1,6 @@
-// OBJS/core.js
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 let selectedWidget = null;
 let dragWidget = null;
 let zoomLevel = 1;

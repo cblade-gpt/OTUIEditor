@@ -1,4 +1,6 @@
-// API Client - Wraps server-side API calls
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 // SECURE: No local fallback - API server required
 
 // API_BASE_URL is set in HTML, fallback to auto-detect

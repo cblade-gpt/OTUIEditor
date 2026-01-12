@@ -1,5 +1,6 @@
-// Server-side AI Generator (no DOM dependencies)
-// Extracted from OBJS/ai-generator.js - pure AI logic only
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 
 const https = require('https');
 const http = require('http');

@@ -1,3 +1,8 @@
+# License
+OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests.
+
 # OTUI Editor API Server
 
 This server protects the critical parsing and generation logic by running it server-side.

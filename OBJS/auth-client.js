@@ -1,4 +1,6 @@
-// Authentication Client
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 // Handles login, registration, and session management
 
 window.AuthClient = {

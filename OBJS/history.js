@@ -1,4 +1,6 @@
-// OBJS/history.js - Undo/Redo functionality
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 let undoHistory = [];
 let historyIndex = -1;
 const MAX_HISTORY = 100;

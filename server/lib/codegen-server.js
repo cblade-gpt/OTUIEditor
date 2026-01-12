@@ -1,5 +1,6 @@
-// Server-side OTUI Code Generator (no DOM dependencies)
-// Extracted from OBJS/codegen.js - pure generation logic only
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 
 function formatTranslationValue(value) {
     if (!value) return '';

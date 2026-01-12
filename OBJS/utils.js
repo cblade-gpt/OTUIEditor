@@ -1,5 +1,7 @@
-// OBJS/utils.js - RUNS ONLY ONCE
-(function() {
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
+(function () {
     if (window.__OTUI_UTILS) return;
     window.__OTUI_UTILS = true;
 

@@ -1,4 +1,6 @@
-// OBJS/styleloader.js - OTUI Style Loader for OTClientV8
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 let clientDataPath = null;
 let loadedStyles = {};
 let styleCache = {};

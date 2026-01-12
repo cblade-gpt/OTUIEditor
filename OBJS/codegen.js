@@ -1,4 +1,6 @@
-// OBJS/codegen.js - OTUI and Lua code generation
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 
 // Helper function to get original property name from camelCase dataset key
 function getOriginalPropertyName(widget, camelKey) {

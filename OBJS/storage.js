@@ -1,4 +1,6 @@
-// OBJS/storage.js - Cookie-based storage for widgets, progress, and preferences
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 // Handles cookie consent and storage operations
 
 let cookieConsentGiven = false;

@@ -1,4 +1,6 @@
-// OBJS/ai-generator.js - AI-powered OTUI module generator
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 // Uses loaded OTUI files as context to generate modules based on user descriptions
 
 class OTUIAIGenerator {

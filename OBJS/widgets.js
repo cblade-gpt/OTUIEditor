@@ -1,4 +1,6 @@
-// OBJS/widgets.js - Comprehensive OTUI Widget Library
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 const OTUI_WIDGETS = {
     // ========== LAYOUT WIDGETS ==========
     UIWindow: { category: "Layout", isContainer: true, props: { title: "My Window", draggable: true, closable: true }, events: { onClose: 'function()' } },

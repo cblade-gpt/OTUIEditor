@@ -1,4 +1,6 @@
-// OBJS/init.js - Main initialization and event bindings
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 function getWidgetDepth(widget) {
     let depth = 0;
     let p = widget.parentElement;

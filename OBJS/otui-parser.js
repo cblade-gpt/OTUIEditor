@@ -1,4 +1,6 @@
-// OBJS/otui-parser.js - Parse OTUI code and create widgets on canvas
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 // Based on OTCv8 source: uitranslator.cpp, uianchorlayout.cpp, uiwidgetbasestyle.cpp
 // Supports dynamically discovered widgets from loaded OTUI styles
 

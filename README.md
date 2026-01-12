@@ -1,3 +1,9 @@
+# License
+OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests.
+
+
 # OTUI Builder
 
 Visual editor for OTClient UI files.

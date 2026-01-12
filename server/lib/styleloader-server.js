@@ -1,5 +1,6 @@
-// Server-side OTUI Style Loader (no DOM dependencies)
-// Extracted from OBJS/styleloader.js - pure parsing logic only
+/* OTUI Editor is licensed for **personal, non-commercial use only**.
+Commercial use, resale, or closed-source redistribution is strictly prohibited.
+Contributions are welcome via pull requests. */
 
 function parseOTUIFile(content) {
     const styles = {};
