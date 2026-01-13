@@ -5,8 +5,8 @@ Contributions are welcome via pull requests.
 
 
 # OTUI Builder
-
 Visual editor for OTClient UI files.
+Example: https://otui.otveterans.net/
 
 ## Quick Start
 
